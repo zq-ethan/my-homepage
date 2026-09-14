@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>赵泉恩 · 个人主页</title>
+  <meta name="description" content="赵泉恩的个人主页，附一个可以提问的数字分身。" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+
+    <!-- ===== 头部：头像 + 名字 + 一句话 ===== -->
+    <header class="hero">
+      <div class="avatar" id="avatar">
+        <span class="avatar-text">赵</span>
+      </div>
+
+      <h1 class="name">赵泉恩</h1>
+      <p class="tagline">话少话多无厘头</p>
+
+      <div class="hero-meta">
+        <span class="chip">学生</span>
+        <span class="chip">计算机</span>
+        <span class="chip">AI</span>
+      </div>
+    </header>
+
+    <!-- ===== 主体双栏：左侧关于我 + 右侧聊天 ===== -->
+    <div class="content-grid">
+
+      <!-- ===== 个人信息展示区 ===== -->
+      <section class="section section-about">
+        <h2 class="section-title">关于我</h2>
+
+      <div class="info-grid">
+        <div class="card">
+          <div class="card-label">身份</div>
+          <div class="card-value">学生</div>
+          <div class="card-sub">计算机科学与技术 · 2028 届</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">最近在做</div>
+          <div class="card-value">学开发 + 做一个图库管理 App</div>
+          <div class="card-sub">vibecoding 中，边写边学</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">擅长 / 关心</div>
+          <div class="card-value">计算机 · AI</div>
+          <div class="card-sub">方向：AI 全栈（Python + Vue3）</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">兴趣</div>
+          <div class="card-value">摄影 · 游戏 · 美食</div>
+          <div class="card-sub">光影捕手 · 赛博赌徒 · 干饭机器</div>
+        </div>
+
+        <div class="card card-accent">
+          <div class="card-label">记忆点</div>
+          <div class="card-value">帅到你了</div>
+          <div class="card-sub">这句他逐字审过</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">现在的目标</div>
+          <div class="card-value">学习 vibecoding，make money</div>
+          <div class="card-sub">技能变现进行中</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 数字分身聊天区 ===== -->
+    <section class="section section-chat">
+      <h2 class="section-title">
+        数字分身
+        <span class="status status-loading" id="aiStatus">正在连接模型…</span>
+      </h2>
+
+      <div class="chat" id="chat">
+        <div class="chat-log" id="chatLog">
+          <!-- 消息由 app.js 渲染 -->
+        </div>
+
+        <div class="quick-questions" id="quickQuestions">
+          <button class="q-chip" type="button">最近在干嘛？</button>
+          <button class="q-chip" type="button">你有什么作品？</button>
+          <button class="q-chip" type="button">你喜欢什么？</button>
+          <button class="q-chip" type="button">介绍一下你自己</button>
+          <button class="q-chip" type="button">你的技术栈是什么？</button>
+        </div>
+
+        <form class="chat-input" id="chatForm" autocomplete="off">
+          <input
+            type="text"
+            id="chatInput"
+            placeholder="问点什么，比如「最近在干嘛」"
+            aria-label="向数字分身提问"
+          />
+          <button type="submit" id="sendBtn">发送</button>
+        </form>
+      </div>
+    </section>
+
+    </div><!-- /.content-grid -->
+
+    <footer class="footer">
+      <p>© 2026 赵泉恩 · 第一版原型</p>
+      <p class="footer-dim">头像和回答内容都可以随时替换</p>
+    </footer>
+
+  </div>
+
+  <!-- 数字分身 v3：本地后端 server.py 转发到 DeepSeek，不再依赖 WorkBuddy SDK -->
+  <script src="app.js"></script>
+</body>
+</html>

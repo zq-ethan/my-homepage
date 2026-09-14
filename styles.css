@@ -1,0 +1,426 @@
+/* ===== 基础变量：白底 + 柔和灰蓝 ===== */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1b1d21;
+  --text-dim: #6b7280;
+  --text-faint: #9aa1ab;
+  --line: #e9ebef;
+  --accent: #4f7cff;
+  --accent-soft: #eef2ff;
+  --radius: 16px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 20px rgba(16, 24, 40, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 48px 28px 64px;
+}
+
+/* ===== 主体双栏布局 ===== */
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.section-about {
+  margin-top: 32px;
+}
+
+.section-chat {
+  margin-top: 32px;
+}
+
+/* 桌面端：聊天区 sticky，滚动时钉住 */
+@media (min-width: 900px) {
+  .section-chat {
+    position: sticky;
+    top: 24px;
+  }
+}
+
+/* ===== 头部 ===== */
+.hero {
+  text-align: center;
+  padding: 24px 0 48px;
+  border-bottom: 1px solid var(--line);
+}
+
+.avatar {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dbe4ff 0%, #eef2ff 50%, #f3f0ff 100%);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-text {
+  font-size: 32px;
+  font-weight: 600;
+  color: #4b5a80;
+  letter-spacing: 2px;
+}
+
+.name {
+  margin: 0;
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.tagline {
+  margin: 12px 0 0;
+  font-size: 17px;
+  color: var(--text-faint);
+}
+
+.hero-meta {
+  margin-top: 24px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-block;
+  padding: 3px 11px;
+  font-size: 12px;
+  color: #43506e;
+  background: var(--accent-soft);
+  border: 1px solid #e0e7ff;
+  border-radius: 999px;
+}
+
+/* ===== 区块 ===== */
+.section {
+  margin-top: 28px;
+}
+
+.section-title {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.section-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+/* 模型连接状态徽标 */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  background: #fff;
+}
+
+.status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-online {
+  color: #2f9e63;
+  border-color: #cdeedb;
+  background: #f2fbf6;
+}
+
+.status-offline {
+  color: #b4791f;
+  border-color: #f0e2c4;
+  background: #fdf8ee;
+}
+
+.status-loading {
+  color: var(--text-faint);
+}
+
+/* ===== 信息卡片 ===== */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.card-accent {
+  background: linear-gradient(160deg, #f7f9ff 0%, #ffffff 70%);
+  border-color: #e0e7ff;
+}
+
+.card-label {
+  font-size: 12px;
+  color: var(--text-faint);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.card-value {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.card-sub {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* ===== 聊天区 ===== */
+.chat {
+  background: var(--surface);
+  border: 1px solid #e0e7ff;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 12px rgba(79, 124, 255, 0.08);
+  overflow: hidden;
+}
+
+.chat-log {
+  height: 460px;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fcfcfd;
+  scroll-behavior: smooth;
+}
+
+.msg {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg-bot {
+  align-self: flex-start;
+  background: #f1f3f7;
+  color: var(--text);
+  border-bottom-left-radius: 4px;
+}
+
+.msg-user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+/* 降级 / 报错提示 */
+.msg-notice {
+  align-self: center;
+  max-width: 92%;
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9a6b12;
+  background: #fdf6e7;
+  border: 1px solid #f2e4c4;
+  border-radius: 10px;
+  white-space: pre-wrap;
+}
+
+.typing span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: #aab2c0;
+  animation: blink 1.2s infinite ease-in-out;
+}
+
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+
+/* 快捷问题 */
+.quick-questions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.q-chip {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #43506e;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.q-chip:hover {
+  background: var(--accent-soft);
+  border-color: #d7e0ff;
+}
+
+/* 输入区 */
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 14px 18px 18px;
+}
+
+.chat-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  font-size: 14.5px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-input input:focus {
+  border-color: #b9c9ff;
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+}
+
+.chat-input button {
+  padding: 11px 20px;
+  font-size: 14.5px;
+  font-family: inherit;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.chat-input button:hover { opacity: 0.9; }
+.chat-input button:disabled { opacity: 0.5; cursor: default; }
+.chat-input button.is-stop { background: #8a93a6; }
+
+/* ===== 页脚 ===== */
+.footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.footer p { margin: 4px 0; }
+.footer-dim { font-size: 12px; color: var(--text-faint); }
+
+/* ===== 手机适配 ===== */
+@media (max-width: 899px) {
+  .page { padding: 32px 16px 48px; max-width: 100%; }
+
+  /* 双栏塌缩为单栏 */
+  .content-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  /* 手机端：聊天区排到关于我前面 */
+  .section-chat {
+    order: -1;
+    margin-top: 24px;
+  }
+  .section-about {
+    margin-top: 0;
+  }
+
+  /* 头像缩小 */
+  .avatar { width: 72px; height: 72px; margin-bottom: 14px; }
+  .avatar-text { font-size: 28px; }
+  .name { font-size: 32px; }
+  .tagline { font-size: 16px; }
+  .hero-meta { margin-top: 20px; }
+
+  /* 关于我卡片单列 */
+  .info-grid { grid-template-columns: 1fr; gap: 10px; }
+
+  /* 聊天区高度手机端收一点 */
+  .chat-log { height: 320px; padding: 14px; }
+  .msg { max-width: 86%; }
+  .quick-questions { padding: 10px 14px 0; }
+  .chat-input { padding: 12px 14px 14px; }
+  .chat-input button { padding: 11px 16px; }
+}
