@@ -11,5 +11,3 @@ services:
         sync: false
       - key: DEEPSEEK_MODEL
         value: deepseek-chat
-      - key: PORT
-        value: "8000"
