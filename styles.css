@@ -43,11 +43,21 @@ body {
   align-items: start;
 }
 
+/* 左栏：about + works 都在 col 1 */
 .section-about {
+  grid-column: 1;
   margin-top: 32px;
 }
 
+.section-works {
+  grid-column: 1;
+  margin-top: 28px;
+}
+
+/* 右栏：chat 独占 col 2 */
 .section-chat {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   margin-top: 32px;
 }
 
@@ -104,6 +114,31 @@ body {
 .tagline {
   margin: 12px 0 0;
   font-size: 17px;
+  color: var(--text-faint);
+}
+
+.hero-email {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hero-email-link {
+  font-size: 14px;
+  color: var(--accent);
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.hero-email-link:hover {
+  opacity: 0.75;
+  text-decoration: underline;
+}
+
+.hero-email-sub {
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -375,6 +410,51 @@ body {
 .chat-input button:disabled { opacity: 0.5; cursor: default; }
 .chat-input button.is-stop { background: #8a93a6; }
 
+/* ===== 作品展示区 ===== */
+.section-works {
+  margin-top: 28px;
+}
+
+/* ===== 联系方式 ===== */
+.section-contact {
+  margin-top: 32px;
+}
+
+.contact-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.contact-chip {
+  display: inline-block;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid #d7e0ff;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.contact-chip:hover {
+  background: #dde5ff;
+  border-color: #c5d0ff;
+}
+
+.contact-chip-ghost {
+  color: var(--text-faint);
+  background: #f6f7f9;
+  border-color: var(--line);
+}
+
+.contact-chip-ghost:hover {
+  color: var(--text-dim);
+  background: #eef0f4;
+  border-color: #d8dbe1;
+}
+
 /* ===== 页脚 ===== */
 .footer {
   margin-top: 48px;
@@ -392,19 +472,29 @@ body {
 @media (max-width: 899px) {
   .page { padding: 32px 16px 48px; max-width: 100%; }
 
-  /* 双栏塌缩为单栏 */
+  /* 双栏塌缩为单栏，清除桌面端的 grid-column 指派 */
   .content-grid {
     grid-template-columns: 1fr;
     gap: 20px;
+  }
+  .section-about, .section-works, .section-chat {
+    grid-column: unset;
+    grid-row: unset;
   }
 
   /* 手机端：聊天区排到关于我前面 */
   .section-chat {
     order: -1;
+    position: static;
     margin-top: 24px;
   }
   .section-about {
     margin-top: 0;
+  }
+
+  /* 作品排在 about 后面 */
+  .section-works {
+    margin-top: 20px;
   }
 
   /* 头像缩小 */
