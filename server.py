@@ -16,6 +16,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # ---------- 路径 ----------
 BASE_DIR = Path(__file__).parent
+# 前端静态文件都放在 public/，这个目录同时也是 Cloudflare Pages 的部署输出目录。
+# 根目录刻意不放前端文件：Pages 会把输出目录整个传到公网，
+# 前端若留在根目录，persona.md / server.py / .env 会被一起传上去。
+PUBLIC_DIR = BASE_DIR / "public"
 
 # ---------- 配置 ----------
 load_dotenv()  # 读取 .env 文件
@@ -140,7 +144,7 @@ async def chat(req: Request):
 
 
 # ---------- 静态文件（前端） ----------
-# 只放行前端真正需要的文件（白名单）。
+# 只放行前端真正需要的文件（白名单），且只从 public/ 目录取。
 # 不要改回 app.mount("/", StaticFiles(directory=BASE_DIR))：那样会把 .env（含 API key）、
 # server.py、persona.md、.git/ 一并暴露给浏览器，任何人都能直接下载。
 # 以后新增前端资源（比如把文字头像换成图片），记得把文件名补进 FRONTEND_FILES。
@@ -149,7 +153,7 @@ FRONTEND_FILES = {"index.html", "styles.css", "app.js"}
 
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(BASE_DIR / "index.html")
+    return FileResponse(PUBLIC_DIR / "index.html")
 
 
 @app.get("/{filename}", include_in_schema=False)
@@ -158,7 +162,7 @@ def frontend_asset(filename: str):
         return JSONResponse(
             {"error": "not_found", "message": f"/{filename} 不存在"}, status_code=404
         )
-    return FileResponse(BASE_DIR / filename)
+    return FileResponse(PUBLIC_DIR / filename)
 
 
 if __name__ == "__main__":

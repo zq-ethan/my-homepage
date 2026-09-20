@@ -11,6 +11,10 @@ __pycache__/
 .venv/
 venv/
 
+# 本地测试报告（由 tools/*.mjs、tools/*.py 生成，属于临时产物）
+tools/_report*.txt
+tools/_pwlog.txt
+
 # IDE
 .vscode/
 .idea/
