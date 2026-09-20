@@ -48,7 +48,8 @@ const KB = [
   },
   {
     keywords: ["联系", "微信", "邮箱", "怎么找", "合作", "接单", "找你"],
-    answer: "联系方式还没公开。\n如果是聊合作或接单，可以先把需求说清楚，我这边会转达给他。",
+    answer:
+      "邮箱：zqethan20260906@outlook.com\n聊合作、接单或者单纯提问，都发这里就行。",
   },
   {
     keywords: ["拍照", "摄影", "照片", "相机", "图库", "美食", "吃", "餐厅"],
@@ -84,25 +85,12 @@ function localReply(question) {
 /* ============================================================
    运行时状态
    ============================================================ */
-let cloud = null;
-let model = null;
-let controller = null; // 当前请求，用于中止
+let backendReady = false; // 本地后端是否可用（探活通过 + 已配 key）
+let modelName = "";       // 后端实际使用的模型名，仅用于状态徽标显示
+let controller = null;    // 当前请求，用于中止
 const history = []; // 最近若干轮对话（模型上下文）
 const MAX_HISTORY = 8;
 const MAX_INPUT = 500;
-
-const conversationId = (() => {
-  try {
-    let id = localStorage.getItem("zqe_conversation_id");
-    if (!id) {
-      id = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random();
-      localStorage.setItem("zqe_conversation_id", id);
-    }
-    return id;
-  } catch (e) {
-    return String(Date.now()) + Math.random();
-  }
-})();
 
 /* ---------- DOM ---------- */
 const chatLog = document.getElementById("chatLog");
@@ -150,16 +138,16 @@ async function initCloud() {
     const resp = await fetch(`${API_BASE}/api/health`);
     const data = await resp.json();
     if (!data.hasKey) {
-      cloud = null;
+      backendReady = false;
       setStatus("offline", "离线知识库模式（服务器未配 key）");
       return;
     }
-    cloud = { ready: true, model: data.model }; // 用一个标志位代替原来的 cloud 对象
-    model = data.model || "deepseek";
-    setStatus("online", "已接入 " + model);
+    backendReady = true;
+    modelName = data.model || "deepseek";
+    setStatus("online", "已接入 " + modelName);
   } catch (err) {
     console.warn("[local] 后端探活失败，可能是 server.py 没起", err);
-    cloud = null;
+    backendReady = false;
     setStatus("offline", "离线知识库模式（server.py 未运行）");
   }
 }
@@ -167,7 +155,9 @@ async function initCloud() {
 /* ---------- 错误文案 ---------- */
 function errorText(err) {
   if (!err) return "调用失败：未知错误";
-  if (err.code === "network") return "网络错误：" + (err.message || "");
+  // 两处来源的字段名不同：浏览器 fetch 抛异常用 code，后端转发层用 error，都认
+  if (err.code === "network" || err.error === "network")
+    return "网络错误：" + (err.message || "");
   if (err.error && err.error.startsWith("upstream_"))
     return "DeepSeek 返回错误（" + err.error + "）";
   return "调用失败：" + (err.message || "未知错误");
@@ -181,7 +171,7 @@ async function ask(rawQuestion) {
   addMessage(question, "user");
   chatInput.value = "";
 
-  if (!cloud || !model) {
+  if (!backendReady) {
     const typing = showTyping();
     setTimeout(() => {
       typing.remove();

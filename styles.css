@@ -410,11 +410,6 @@ body {
 .chat-input button:disabled { opacity: 0.5; cursor: default; }
 .chat-input button.is-stop { background: #8a93a6; }
 
-/* ===== 作品展示区 ===== */
-.section-works {
-  margin-top: 28px;
-}
-
 /* ===== 联系方式 ===== */
 .section-contact {
   margin-top: 32px;
@@ -441,18 +436,6 @@ body {
 .contact-chip:hover {
   background: #dde5ff;
   border-color: #c5d0ff;
-}
-
-.contact-chip-ghost {
-  color: var(--text-faint);
-  background: #f6f7f9;
-  border-color: var(--line);
-}
-
-.contact-chip-ghost:hover {
-  color: var(--text-dim);
-  background: #eef0f4;
-  border-color: #d8dbe1;
 }
 
 /* ===== 页脚 ===== */

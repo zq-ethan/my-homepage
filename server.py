@@ -10,8 +10,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 import httpx
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -26,7 +25,7 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 PORT = int(os.getenv("PORT", "5000"))
 
 # ---------- 人设：从 persona.md 读取（改人设只动这个文件） ----------
-PERSONA_PATH = Path(__file__).parent / "persona.md"
+PERSONA_PATH = BASE_DIR / "persona.md"
 
 def load_persona() -> str:
     """从 persona.md 读取人设，如果文件不存在返回兜底值"""
@@ -141,8 +140,25 @@ async def chat(req: Request):
 
 
 # ---------- 静态文件（前端） ----------
-# 把当前目录挂载到根路径，前端 / 时直接返回 index.html
-app.mount("/", StaticFiles(directory=str(BASE_DIR), html=True), name="static")
+# 只放行前端真正需要的文件（白名单）。
+# 不要改回 app.mount("/", StaticFiles(directory=BASE_DIR))：那样会把 .env（含 API key）、
+# server.py、persona.md、.git/ 一并暴露给浏览器，任何人都能直接下载。
+# 以后新增前端资源（比如把文字头像换成图片），记得把文件名补进 FRONTEND_FILES。
+FRONTEND_FILES = {"index.html", "styles.css", "app.js"}
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    return FileResponse(BASE_DIR / "index.html")
+
+
+@app.get("/{filename}", include_in_schema=False)
+def frontend_asset(filename: str):
+    if filename not in FRONTEND_FILES:
+        return JSONResponse(
+            {"error": "not_found", "message": f"/{filename} 不存在"}, status_code=404
+        )
+    return FileResponse(BASE_DIR / filename)
 
 
 if __name__ == "__main__":

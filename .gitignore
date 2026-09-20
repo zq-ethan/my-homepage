@@ -1,6 +1,9 @@
 # 环境变量 / 密钥（绝不提交）
 .env
 
+# AI 助手的本地记忆与项目数据（含个人、学业等信息，绝不提交）
+.workbuddy/
+
 # Python
 __pycache__/
 *.py[cod]
