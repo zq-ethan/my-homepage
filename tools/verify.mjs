@@ -174,6 +174,23 @@ check("非 localhost 时走同域（API_BASE 为空串）", /location\.hostname 
 check("前端认 { content } 字段", appJs.includes("obj.content"));
 check("前端认 [DONE] 标记", appJs.includes("[DONE]"));
 
+/* ---------- 6. 部署配置 ---------- */
+log("");
+log("== 6. Cloudflare 部署配置 ==");
+
+try {
+  const routes = JSON.parse(
+    readFileSync(join(root, "public", "_routes.json"), "utf8")
+  );
+  check("public/_routes.json 存在且是合法 JSON", true);
+  check(
+    "只让 /api/* 触发函数（静态资源不消耗配额）",
+    Array.isArray(routes.include) && routes.include.includes("/api/*")
+  );
+} catch (err) {
+  check("public/_routes.json 存在且是合法 JSON", false, String(err));
+}
+
 /* ---------- 汇总 ---------- */
 log("");
 log(failed === 0 ? `全部通过（0 项失败）` : `有 ${failed} 项失败`);
