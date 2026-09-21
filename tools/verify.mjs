@@ -711,6 +711,97 @@ try {
   check("public/_routes.json 存在且是合法 JSON", false, String(err));
 }
 
+/* ---------- 6b. public/_headers（安全响应头） ---------- */
+log("");
+log("== 6b. public/_headers（安全响应头） ==");
+
+let headersRaw = null;
+try {
+  headersRaw = readFileSync(join(root, "public", "_headers"), "utf8");
+  check("public/_headers 存在", true);
+} catch (err) {
+  check("public/_headers 存在", false, String(err));
+}
+
+if (headersRaw !== null) {
+  // 语法：顶格行 = 路径规则（必须以 / 开头）；缩进行 = "Name: value"
+  let syntaxBad = "";
+  for (const raw of headersRaw.split(/\r?\n/)) {
+    const line = raw.replace(/\s+$/, "");
+    if (line === "" || line.trimStart().startsWith("#")) continue;
+    const indented = /^[ \t]/.test(line);
+    const okIndented = /^[ \t]+[A-Za-z0-9-]+:[ \t]*\S/.test(line);
+    const okTopLevel = line.startsWith("/");
+    if (!(indented ? okIndented : okTopLevel)) {
+      syntaxBad = line;
+      break;
+    }
+  }
+  check(
+    "文件语法合法（路径顶格、头部缩进成 Name: value）",
+    syntaxBad === "",
+    syntaxBad
+  );
+
+  // 关键护栏：这两个头一旦写进去，留言板 / 管理页会直接坏
+  const csp = headersRaw.match(/content-security-policy:([^\n]*)/i);
+  const cspSafe =
+    !csp ||
+    (/challenges\.cloudflare\.com/i.test(csp[1]) &&
+      /'unsafe-inline'|sha256-|nonce-/i.test(csp[1]));
+  check(
+    "CSP 若存在，必须放行 Turnstile 域名 + 内联脚本（admin.html 内联了一整段）",
+    cspSafe,
+    csp ? csp[1].trim() : "未写 CSP（保守方案）"
+  );
+  check(
+    "不写 COEP（require-corp 会拦掉跨域的 Turnstile iframe/脚本）",
+    !/cross-origin-embedder-policy/i.test(headersRaw)
+  );
+  check(
+    "不写 HSTS（应由 Cloudflare 边缘统一下发，写死在文件里难回滚）",
+    !/strict-transport-security/i.test(headersRaw)
+  );
+  check(
+    "不放宽 CORS（不能出现 Access-Control-Allow-Origin）",
+    !/access-control-allow-origin/i.test(headersRaw)
+  );
+  check(
+    "不放宽 COOP（不能出现 Cross-Origin-Opener-Policy: unsafe-none）",
+    !/cross-origin-opener-policy:\s*unsafe-none/i.test(headersRaw)
+  );
+
+  // 正向：该有的必须真在
+  check(
+    "全局声明 no-sniff",
+    /x-content-type-options:[ \t]*nosniff/i.test(headersRaw)
+  );
+  check(
+    "全局声明 Referrer-Policy",
+    /referrer-policy:[ \t]*\S/i.test(headersRaw)
+  );
+  check(
+    "防点击劫持：/admin.html 规则里有 X-Frame-Options: DENY",
+    /\/admin\.html[\s\S]{0,240}?x-frame-options:[ \t]*(DENY|SAMEORIGIN)/i.test(
+      headersRaw
+    )
+  );
+  check(
+    "管理页不被搜索引擎收录：/admin.html 有 X-Robots-Tag: noindex",
+    /\/admin\.html[\s\S]{0,240}?x-robots-tag:[^\n]*noindex/i.test(headersRaw)
+  );
+  check(
+    "管理页不缓存：/admin.html 有 Cache-Control: no-store",
+    /\/admin\.html[\s\S]{0,240}?cache-control:[^\n]*no-store/i.test(headersRaw)
+  );
+
+  // 规则顺序：通用 /* 在前、具体路径在后，避免覆盖顺序引发歧义
+  const firstRule = headersRaw
+    .split(/\r?\n/)
+    .find((l) => l.trim() && !l.trimStart().startsWith("#"));
+  check("规则顺序：通用 /* 写在最前", (firstRule || "").trim() === "/*");
+}
+
 /* ---------- 汇总 ---------- */
 log("");
 log(failed === 0 ? `全部通过（0 项失败）` : `有 ${failed} 项失败`);
