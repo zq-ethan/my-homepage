@@ -1,16 +1,10 @@
-# Cloudflare Pages 安全响应头配置
-# 只加「纯声明式、不参与页面功能」的头。不放 CSP / COEP，见下方说明。
-# 原因：admin.html 内联了一整段 <script>，留言区还会动态加载
-# https://challenges.cloudflare.com/turnstile/v0/api.js 并内嵌其 iframe。
-# CSP 或 COEP 写窄一点就会把这两样一起拦掉，表现为「留言板突然不能提交」。
-# 真要加 CSP，必须先放行 challenges.cloudflare.com 且允许 'unsafe-inline'。
-
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
-
 /admin.html
   X-Frame-Options: DENY
   X-Robots-Tag: noindex, nofollow
   Cache-Control: no-store
+/admin*
+  X-Probe-Splat: 1
