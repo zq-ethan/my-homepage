@@ -116,12 +116,27 @@ function setStatus(kind, text) {
   statusEl.textContent = text;
 }
 
+/* 滚到聊天区底部。
+ *
+ * 为什么要分两种模式：
+ *   CSS 里 .chat-log 有 scroll-behavior: smooth，它同时影响 scrollTop 赋值 ——
+ *   每次赋值都会启动一段平滑滚动动画。而流式输出是每收到一个 token 就滚一次，
+ *   于是动画被反复打断、重启，表现成"内容在底部追着滚"的抖动感。
+ *   所以流式阶段用 auto（瞬时跳到目标位置），一问一答整段出现时才用 smooth。
+ */
+function scrollToBottom(smooth) {
+  chatLog.scrollTo({
+    top: chatLog.scrollHeight,
+    behavior: smooth ? "smooth" : "auto",
+  });
+}
+
 function addMessage(text, who) {
   const el = document.createElement("div");
   el.className = "msg msg-" + who;
   el.textContent = text;
   chatLog.appendChild(el);
-  chatLog.scrollTop = chatLog.scrollHeight;
+  scrollToBottom(true);
   return el;
 }
 
@@ -130,7 +145,7 @@ function addNotice(text) {
   el.className = "msg msg-notice";
   el.textContent = text;
   chatLog.appendChild(el);
-  chatLog.scrollTop = chatLog.scrollHeight;
+  scrollToBottom(true);
 }
 
 function showTyping() {
@@ -138,7 +153,7 @@ function showTyping() {
   el.className = "msg msg-bot typing";
   el.innerHTML = "<span></span><span></span><span></span>";
   chatLog.appendChild(el);
-  chatLog.scrollTop = chatLog.scrollHeight;
+  scrollToBottom(true);
   return el;
 }
 
@@ -262,7 +277,8 @@ async function askLLM(question) {
             if (obj.content) {
               acc += obj.content;
               botEl.textContent = acc;
-              chatLog.scrollTop = chatLog.scrollHeight;
+              // 流式阶段必须瞬时滚：见 scrollToBottom 的注释
+              scrollToBottom(false);
             }
           } catch (e) {
             // 不完整的 JSON，放回 buffer 等下一块
