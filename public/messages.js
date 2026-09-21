@@ -1,6 +1,7 @@
 /* ============================================================
    赵泉恩 · 个人主页 / 留言板前端
    - 数据来自 /api/messages（本地 server.py，线上 Cloudflare Function）
+   - 列表分页：服务端每页 10 条，前端带 ?page=N 翻页（上一页 / 下一页）
    - 两条硬规则：
      1) 所有渲染走 textContent，绝不用 innerHTML。留言是陌生人写的，
         一旦用 innerHTML，别人塞一句 <img src=x onerror=...> 就能偷走访客的东西。
@@ -30,9 +31,14 @@
   const listBox = $("msgList");
   const sendBtn = $("msgSend");
   const turnstileBox = $("msgTurnstile");
+  const pager = $("msgPager");
+  const prevBtn = $("msgPrev");
+  const nextBtn = $("msgNext");
+  const pageInfo = $("msgPageInfo");
 
   /* ---------- 运行时状态 ---------- */
   let sending = false;            // 正在提交，防连点
+  let currentPage = 1;            // 当前页码，翻页按钮靠它算目标页
   let turnstileWidget = null;     // 挂件渲染后拿到的 id，reset 时要它
   let turnstileRequired = false;  // 后端配了验证才需要
   let turnstileLoaded = false;    // 挂件只渲染一次
@@ -173,24 +179,63 @@
   }
 
   /* ============================================================
-     拉列表
+     拉列表（分页）
+     —— 服务端已经把 page / total / totalPages / hasPrev / hasNext 算好了，
+        前端只负责显示和禁用按钮，不自己猜"还有没有下一页"。
      ============================================================ */
 
-  async function load() {
+  const listUrl = (page) => API + "?page=" + encodeURIComponent(page);
+
+  async function load(page) {
+    const target = page || 1;
     try {
-      const resp = await fetch(API, { headers: { Accept: "application/json" } });
+      const resp = await fetch(listUrl(target), {
+        headers: { Accept: "application/json" },
+      });
       const data = await resp.json();
 
       if (!data.ok) throw new Error(data.message || data.error || "接口返回异常");
 
+      currentPage = data.page || target;
       renderList(data.messages || []);
+      renderPager(data);
       setupTurnstile(data);
     } catch (err) {
       // 后端没配 D1、或者根本没部署留言接口时，页面不能白屏
       listBox.textContent = "";
       listBox.appendChild(makeEmpty("留言区暂时连不上，稍后刷新试试。"));
+      hidePager();
       showHint("留言加载失败：" + (err.message || err), "error");
     }
+  }
+
+  /** 只有一页时整个分页器藏起来——没得翻就别摆两个灰按钮 */
+  function renderPager(data) {
+    // 万一浏览器缓存了旧版 HTML（没有这几个元素），也不能让整个留言板挂掉
+    if (!pager || !prevBtn || !nextBtn || !pageInfo) return;
+
+    const totalPages = data.totalPages || 1;
+    if (totalPages <= 1) {
+      hidePager();
+      return;
+    }
+
+    pager.hidden = false;
+    pageInfo.textContent =
+      "第 " + data.page + " / " + totalPages + " 页 · 共 " + (data.total || 0) + " 条";
+    prevBtn.disabled = !data.hasPrev;
+    nextBtn.disabled = !data.hasNext;
+  }
+
+  function hidePager() {
+    if (pager) pager.hidden = true;
+  }
+
+  function goPage(page) {
+    load(page).then(() => {
+      // 翻页后列表回到顶部，否则会停在上次滚到的位置
+      listBox.scrollTop = 0;
+    });
   }
 
   /* ============================================================
@@ -243,7 +288,9 @@
 
       if (data.visible) {
         showHint("发出去了，就在下面。", "ok");
-        await load(); // 重新拉一次，顺序和别人的留言混在一起才是真实顺序
+        // 列表按 id 倒序，新留言一定在第 1 页 —— 所以跳回第 1 页才看得到自己那条，
+        // 同时重新拉一次，顺序和别人的留言混在一起才是真实顺序
+        await goPage(1);
       } else {
         showHint("悄悄话已送到，只有他能看到。", "ok");
       }
@@ -275,6 +322,10 @@
       submit();
     }
   });
+
+  // 翻页。按钮在边界会被 renderPager 置成 disabled，所以这里不用再判越界
+  if (prevBtn) prevBtn.addEventListener("click", () => goPage(currentPage - 1));
+  if (nextBtn) nextBtn.addEventListener("click", () => goPage(currentPage + 1));
 
   /* ---------- 启动 ---------- */
   turnstileBox.hidden = true; // 拿到 sitekey 才显示

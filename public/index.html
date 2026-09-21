@@ -168,8 +168,17 @@
           <div class="msg-hint" id="msgHint"></div>
         </form>
 
-        <!-- 留言列表 -->
-        <div class="msg-list" id="msgList"></div>
+        <!-- 留言列表 + 分页 -->
+        <div class="msg-panel">
+          <div class="msg-list" id="msgList"></div>
+
+          <!-- 只有一页时整个藏起来（JS 里控制 hidden） -->
+          <div class="msg-pager" id="msgPager" hidden>
+            <button type="button" id="msgPrev">← 上一页</button>
+            <span class="msg-page-info" id="msgPageInfo"></span>
+            <button type="button" id="msgNext">下一页 →</button>
+          </div>
+        </div>
       </div>
     </section>
 

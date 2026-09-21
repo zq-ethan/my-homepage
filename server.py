@@ -255,8 +255,8 @@ MAX_NAME = 20           # 昵称最长字符数
 MAX_CONTENT = 500       # 正文最长字符数
 RATE_WINDOW_SECONDS = 20   # 同一个人两次留言的最小间隔（20 秒）
 RATE_DAILY_LIMIT = 10   # 24 小时内最多发几条
-PUBLIC_PAGE_SIZE = 50   # 公开列表一次返回几条
-ADMIN_PAGE_SIZE = 500   # 管理页一次返回几条
+PUBLIC_PAGE_SIZE = 10   # 公开列表每页几条（前端带 ?page=N 翻页）
+ADMIN_PAGE_SIZE = 500   # 管理页一次返回几条（不分页，一次给全）
 
 # 建表语句：和 functions/api/messages.js 里的 ensureTable 保持一致
 CREATE_MESSAGES_SQL = """
@@ -538,6 +538,25 @@ async def verify_turnstile(secret: str, token, ip: str) -> bool:
         return False
 
 
+def parse_page(raw, total_pages: int) -> int:
+    """把 URL 上的 ?page= 解析成一个合法页码。
+
+    为什么把越界的页码"夹回来"而不是报错：访客可能收藏了第 5 页的链接，
+    等留言被删到只剩 2 页时，点进去应该看到第 2 页，而不是空白页或者 400。
+
+    functions/api/messages.js 里的 parsePage() 是同一套规则，改这里要同步改那边。
+    """
+    try:
+        n = int(str(raw).strip())
+    except (TypeError, ValueError):
+        n = 1
+    if n < 1:
+        n = 1
+    if n > total_pages:
+        n = total_pages
+    return n
+
+
 def msg_json(obj: dict, status: int = 200) -> JSONResponse:
     """留言接口统一出口：加 no-store，否则发完刷新看不到自己那条"""
     return JSONResponse(obj, status_code=status, headers={"Cache-Control": "no-store"})
@@ -545,7 +564,7 @@ def msg_json(obj: dict, status: int = 200) -> JSONResponse:
 
 @app.get("/api/messages")
 def list_messages(request: Request):
-    """访客拿公开列表；带 ?all=1 且口令正确拿全部（含悄悄话）"""
+    """访客拿公开列表（带 ?page=N 翻页）；带 ?all=1 且口令正确拿全部（含悄悄话）"""
     conn = message_db()
     try:
         ensure_message_table(conn)
@@ -562,15 +581,33 @@ def list_messages(request: Request):
             ).fetchall()
             return msg_json({"ok": True, "messages": [row_to_message(r) for r in rows]})
 
+        page_size = PUBLIC_PAGE_SIZE
+
+        # 先数总条数。分页必须知道总数，才能算总页数、也才能把越界的页码夹回来
+        total = conn.execute(
+            "SELECT COUNT(*) AS n FROM messages WHERE is_private = 0"
+        ).fetchone()["n"]
+        total_pages = max(1, -(-total // page_size))  # 向上取整，不用引入 math
+
+        page = parse_page(request.query_params.get("page"), total_pages)
+
         rows = conn.execute(
             """SELECT id, name, content, created_at
-                 FROM messages WHERE is_private = 0 ORDER BY id DESC LIMIT ?""",
-            (PUBLIC_PAGE_SIZE,),
+                 FROM messages WHERE is_private = 0
+                ORDER BY id DESC LIMIT ? OFFSET ?""",
+            (page_size, (page - 1) * page_size),
         ).fetchall()
         return msg_json(
             {
                 "ok": True,
                 "messages": [row_to_message(r) for r in rows],
+                # 分页元信息。字段名和 functions/api/messages.js 保持一致
+                "page": page,
+                "pageSize": page_size,
+                "total": total,
+                "totalPages": total_pages,
+                "hasPrev": page > 1,
+                "hasNext": page < total_pages,
                 # 前端拿这个决定要不要渲染人机验证挂件；没配就不渲染，表单照样能用
                 "turnstileSiteKey": TURNSTILE_SITE_KEY,
                 "turnstileRequired": bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY),

@@ -285,6 +285,12 @@ body {
   scroll-behavior: smooth;
 }
 
+/* 系统开了「减少动态效果」时关掉平滑滚动。
+   聊天区流式输出每来一个 token 就滚一次，滚动动画对这类用户是负担。 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-log { scroll-behavior: auto; }
+}
+
 .msg {
   max-width: 78%;
   padding: 10px 14px;
@@ -601,6 +607,59 @@ body {
   text-align: center;
   font-size: 13.5px;
   color: var(--text-faint);
+}
+
+/* 列表 + 分页器装一列。min-width: 0 是因为 grid 子项默认 min-width: auto，
+   长留言会把这一栏撑破，右边分页器跟着跑出去。 */
+.msg-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ---- 分页 ---- */
+.msg-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* ⚠️ 这条不能删：hidden 属性来自浏览器默认样式（display:none），
+   优先级低于上面的 .msg-pager { display: flex }，不显式覆盖的话
+   JS 里设 pager.hidden = true 根本藏不住。 */
+.msg-pager[hidden] {
+  display: none;
+}
+
+.msg-pager button {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.msg-pager button:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #c5d0ff;
+}
+
+.msg-pager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.msg-page-info {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums; /* 页码数字等宽，翻页时不会左右抖 */
 }
 
 /* ===== 联系方式 ===== */

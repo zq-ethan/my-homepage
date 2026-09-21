@@ -5,7 +5,7 @@
  * Workers 只能跑 JS，所以本地那段 Python 逻辑在这边重写成 JS，对外行为保持一致。
  *
  * 四个动作：
- *   GET    /api/messages                公开留言（不含悄悄话）
+ *   GET    /api/messages                公开留言（不含悄悄话），带 ?page=N 翻页
  *   GET    /api/messages?all=1          全部留言（要带管理口令，含悄悄话）
  *   POST   /api/messages                发一条留言
  *   DELETE /api/messages?id=123         删一条（要带管理口令）
@@ -28,8 +28,8 @@ const MAX_NAME = 20;             // 昵称最长字符数
 const MAX_CONTENT = 500;         // 留言正文最长字符数
 const RATE_WINDOW_MS = 20 * 1000;      // 同一个人两次留言的最小间隔（20 秒）
 const RATE_DAILY_LIMIT = 10;     // 同一个人 24 小时内最多发几条
-const PUBLIC_PAGE_SIZE = 50;     // 公开列表一次最多返回几条
-const ADMIN_PAGE_SIZE = 500;     // 管理页一次最多返回几条
+const PUBLIC_PAGE_SIZE = 10;     // 公开列表每页几条（前端带 ?page=N 翻页）
+const ADMIN_PAGE_SIZE = 500;     // 管理页一次最多返回几条（不分页，一次给全）
 
 /* 建表只跑一次。Workers 的 isolate 会复用这个模块级变量，
    所以正常情况下一辈子只建一次表，不占每次请求的耗时。 */
@@ -78,21 +78,40 @@ async function handleGet({ request, env }) {
     });
   }
 
-  /* --- 访客视角：只给公开的 --- */
+  /* --- 访客视角：只给公开的，按 ?page=N 分页 --- */
+  const pageSize = PUBLIC_PAGE_SIZE;
+
+  /* 先数总条数。分页必须知道总数，才能算总页数、也才能把越界的页码夹回来 */
+  const counted = await db
+    .prepare("SELECT COUNT(*) AS n FROM messages WHERE is_private = 0")
+    .first();
+  const total = (counted && counted.n) || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const page = parsePage(url.searchParams.get("page"), totalPages);
+
   const { results } = await db
     .prepare(
       `SELECT id, name, content, created_at
          FROM messages
         WHERE is_private = 0
         ORDER BY id DESC
-        LIMIT ?`
+        LIMIT ? OFFSET ?`
     )
-    .bind(PUBLIC_PAGE_SIZE)
+    .bind(pageSize, (page - 1) * pageSize)
     .all();
 
   return jsonResponse({
     ok: true,
     messages: (results || []).map(toMessage),
+    /* 分页元信息。前端靠这几个字段渲染「第 N / M 页」和按钮禁用状态，
+       服务端算好再给，前端就不需要自己猜还有没有下一页。 */
+    page,
+    pageSize,
+    total,
+    totalPages,
+    hasPrev: page > 1,
+    hasNext: page < totalPages,
     /* 前端拿这个决定要不要渲染人机验证挂件。
        没配就不渲染，表单照样能用——本地开发时就是这个状态。 */
     turnstileSiteKey: env.TURNSTILE_SITE_KEY || "",
@@ -345,6 +364,26 @@ function toMessage(row) {
   if (row.is_private !== undefined) m.isPrivate = row.is_private === 1;
   if (row.ip_hash) m.ipHash = String(row.ip_hash).slice(0, 8);
   return m;
+}
+
+/* ============================================================
+   分页
+   ============================================================ */
+
+/**
+ * 把 URL 上的 ?page= 解析成一个合法页码。
+ *
+ * 为什么要把越界的页码"夹回来"而不是报错：
+ * 访客可能收藏了第 5 页的链接，等留言被删到只剩 2 页时，
+ * 点进去应该看到第 2 页，而不是一个空白页或者 400。
+ *
+ * server.py 里的 parse_page() 是同一套规则，改这里要同步改那边。
+ */
+export function parsePage(raw, totalPages) {
+  let n = parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1) n = 1;
+  if (n > totalPages) n = totalPages;
+  return n;
 }
 
 /* ============================================================

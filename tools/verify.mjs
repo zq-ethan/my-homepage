@@ -51,6 +51,26 @@ if (typeof PERSONA === "string") {
   );
   check("多余空行已折叠", !PERSONA.includes("\n\n\n"));
   check("以人设标题开头", PERSONA.startsWith("# 赵泉恩"));
+
+  /* 下面这条是防"改了一半"的。
+     persona.md 改了但忘了跑 tools/sync-persona.mjs 时，上面四条照样全绿 ——
+     因为 _persona.js 本身是完好的，它只是过时了。
+     2026-09-21 真发生过：persona.md 有三处口头禅改完没同步（额额额→额，，、
+     去掉"乐乐"），线上分身继续按旧词说话，人是靠比对文件时间才看出来的。
+     这里按 sync-persona.mjs 的同一套清洗逻辑重算一遍，做全文比对。
+     ⚠️ 清洗步骤必须和 sync-persona.mjs 保持一致，改那边记得改这里。 */
+  try {
+    const mdCleaned = readFileSync(join(root, "persona.md"), "utf8")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    check(
+      "persona.md 与 _persona.js 同步（不同步就跑 node tools/sync-persona.mjs）",
+      PERSONA === mdCleaned
+    );
+  } catch (err) {
+    check("persona.md 与 _persona.js 同步", false, String(err));
+  }
 }
 
 /* ---------- 2. 两个函数模块 ---------- */
@@ -598,6 +618,80 @@ check(
   "留言最小间隔 20 秒且两侧一致",
   /RATE_WINDOW_MS\s*=\s*20\s*\*\s*1000/.test(messagesSrc) &&
     /RATE_WINDOW_SECONDS\s*=\s*20\b/.test(serverSrc)
+);
+
+/* 2026-09-21：给留言页加分页。前后端各一份实现，页大小和字段都得对齐，
+   否则本地翻到第 2 页、线上一刷新又回第 1 页。 */
+check(
+  "messages.js 读 ?page= 并用 LIMIT ? OFFSET ?",
+  /searchParams\.get\("page"\)/.test(messagesSrc) && /LIMIT \? OFFSET \?/.test(messagesSrc)
+);
+check(
+  "messages.js 先 COUNT 再取页（分页要知道总数）",
+  /SELECT COUNT\(\*\) AS n FROM messages WHERE is_private = 0/.test(messagesSrc)
+);
+check(
+  "server.py 也读 ?page= 并用 LIMIT ? OFFSET ?",
+  /query_params\.get\("page"\)/.test(serverSrc) &&
+    /ORDER BY id DESC LIMIT \? OFFSET \?/.test(serverSrc)
+);
+
+/* 分页元信息的字段名必须两份完全一样——前端是照着一份写的 */
+const pageFields = ["page", "pageSize", "total", "totalPages", "hasPrev", "hasNext"];
+check(
+  "messages.js 返回完整分页元信息",
+  pageFields.every((k) => new RegExp(`\\b${k}\\s*[,:]`).test(messagesSrc))
+);
+check(
+  "server.py 返回同一套分页元信息",
+  pageFields.every((k) => serverSrc.includes(`"${k}":`))
+);
+
+const nPubJs = pick(messagesSrc, /PUBLIC_PAGE_SIZE\s*=\s*(\d+)/);
+const nPubPy = pick(serverSrc, /PUBLIC_PAGE_SIZE\s*=\s*(\d+)/);
+check(
+  `每页条数两侧一致（messages.js=${nPubJs} / server.py=${nPubPy}）`,
+  nPubJs > 0 && nPubJs === nPubPy
+);
+
+/* 页码夹取：真跑一遍两边的实现，别只看有没有这个函数 */
+const msgMod = await load("functions/api/messages.js");
+if (typeof msgMod.parsePage === "function") {
+  check(
+    "parsePage 越界夹回最后一页",
+    msgMod.parsePage("99", 3) === 3,
+    `parsePage("99",3)=${msgMod.parsePage("99", 3)}`
+  );
+  check("parsePage 0 夹回第 1 页", msgMod.parsePage("0", 3) === 1);
+  check("parsePage 负数夹回第 1 页", msgMod.parsePage("-5", 3) === 1);
+  check("parsePage 非数字回落到第 1 页", msgMod.parsePage("abc", 3) === 1);
+  check("parsePage 正常值原样返回", msgMod.parsePage("2", 3) === 2);
+} else {
+  check("messages.js 导出了 parsePage", false);
+}
+
+/* 前端与 DOM */
+check("前端请求带 page 参数", /API \+ "\?page="/.test(msgJs));
+check(
+  "首页分页元素齐全",
+  ["msgPager", "msgPrev", "msgNext", "msgPageInfo"].every((id) =>
+    indexHtml.includes(`id="${id}"`)
+  )
+);
+/* ⚠️ hidden 属性的 display:none 来自浏览器默认样式，优先级低于类选择器。
+   .msg-pager 是 display:flex，不显式写这条的话 pager.hidden = true 根本藏不住。 */
+check(
+  "分页器有 .msg-pager[hidden] 覆盖规则",
+  /\.msg-pager\[hidden\]\s*\{[^}]*display:\s*none/.test(stylesCss)
+);
+check(
+  "只有一页时隐藏分页器",
+  /totalPages\s*<=\s*1/.test(msgJs) && /pager\.hidden\s*=\s*true/.test(msgJs)
+);
+check("翻页后列表滚回顶部", msgJs.includes("listBox.scrollTop = 0"));
+check(
+  "发完留言跳回第 1 页（新留言在第 1 页）",
+  /await goPage\(1\)/.test(msgJs)
 );
 
 /* ---------- 6. 部署配置 ---------- */

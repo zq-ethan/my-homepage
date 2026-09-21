@@ -68,6 +68,11 @@ try:
     server.MSG_DB_PATH = tmpdir / "test_messages.db"
     server.ADMIN_TOKEN = "test-token-123"
     server._message_table_ready = False
+    # 人机验证在测试里一律关掉：真 key 只在 Turnstile 后台填过的域名上生效，
+    # 本机拿不到合法 token，开着的话所有留言都会 403。
+    # 显式置空而不是"指望 .env 里是空的"，否则哪天本地配了真 key，测试就会莫名全红。
+    server.TURNSTILE_SITE_KEY = ""
+    server.TURNSTILE_SECRET_KEY = ""
 
     ADMIN = {"X-Admin-Token": "test-token-123"}
     API = "/api/messages"
@@ -128,6 +133,58 @@ try:
 
     r = client.get(API, params={"all": "1"}, headers=ADMIN)
     row("删完确实少一条", len(r.json()["messages"]) == 1, len(r.json()["messages"]))
+
+    # ---------- 公开列表分页 ----------
+    # 此刻库里只剩 1 条公开留言（悄悄话刚被删掉）。再造 25 条 =
+    # 总共 26 条公开 → 每页 10 条 → 正好 3 页，最后一页 6 条。
+    out.append("")
+    out.append("-- 留言分页 --")
+
+    for i in range(25):
+        bypass_rate_limit()   # 否则第 2 条起就被 20 秒限流挡住
+        client.post(API, json={"name": f"p{i}", "content": f"分页测试第 {i} 条"})
+
+    r = client.get(API)
+    d = r.json()
+    row("不传 page 默认第 1 页", d.get("page") == 1, d.get("page"))
+    row("第 1 页返回满页（每页 10 条）", len(d["messages"]) == 10, len(d["messages"]))
+    row("带总条数 total=26", d.get("total") == 26, d.get("total"))
+    row("带总页数 totalPages=3", d.get("totalPages") == 3, d.get("totalPages"))
+    row("第 1 页 hasPrev=False", d.get("hasPrev") is False, d.get("hasPrev"))
+    row("第 1 页 hasNext=True", d.get("hasNext") is True, d.get("hasNext"))
+    row(
+        "第 1 页是最新的（id 倒序）",
+        d["messages"][0]["id"] > d["messages"][-1]["id"],
+        [m["id"] for m in d["messages"][:3]],
+    )
+    row("分页元信息不放进 messages 里", "total" not in d["messages"][0], list(d["messages"][0]))
+
+    ids1 = {m["id"] for m in d["messages"]}
+
+    d2 = client.get(API, params={"page": "2"}).json()
+    row("page=2 生效", d2.get("page") == 2, d2.get("page"))
+    row("第 2 页也是 10 条", len(d2["messages"]) == 10, len(d2["messages"]))
+    row("第 2 页 hasPrev=True", d2.get("hasPrev") is True, d2.get("hasPrev"))
+    row("两页内容不重复", not (ids1 & {m["id"] for m in d2["messages"]}))
+
+    d3 = client.get(API, params={"page": "3"}).json()
+    row("最后一页剩 6 条", len(d3["messages"]) == 6, len(d3["messages"]))
+    row("最后一页 hasNext=False", d3.get("hasNext") is False, d3.get("hasNext"))
+
+    row("页码超界夹回最后一页", client.get(API, params={"page": "99"}).json()["page"] == 3)
+    row("页码 0 夹回第 1 页", client.get(API, params={"page": "0"}).json()["page"] == 1)
+    row("页码负数夹回第 1 页", client.get(API, params={"page": "-5"}).json()["page"] == 1)
+    row("页码非数字回落到第 1 页", client.get(API, params={"page": "abc"}).json()["page"] == 1)
+
+    picked = []
+    for p in ("1", "2", "3"):
+        picked += client.get(API, params={"page": p}).json()["messages"]
+    row("三页加起来正好是全部公开留言", len(picked) == 26, len(picked))
+    row(
+        "分页不会把悄悄话漏出来",
+        all("只给你看的悄悄话" != m["content"] for m in picked),
+    )
+    row("分页结果里没有 isPrivate 字段", all("isPrivate" not in m for m in picked))
 
     # ---------- 聊天接口的防护 ----------
     # 这个接口每次调用都在烧 DeepSeek 余额，之前完全没有限制。
