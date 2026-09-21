@@ -17,7 +17,7 @@ import { PERSONA } from "../_persona.js";
 
 const DEFAULT_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_MODEL = "deepseek-chat";
-const MAX_TURNS = 8;    // 最多带 8 轮上下文，和前端 app.js 的 MAX_HISTORY 对齐
+const MAX_TURNS = 20;   // 最多带 20 条消息（≈10 轮问答），和前端 app.js 的 MAX_HISTORY 对齐
 const MAX_CHARS = 2000; // 单条消息最大长度，防有人塞超长内容烧 token
 
 export async function onRequestPost({ request, env }) {

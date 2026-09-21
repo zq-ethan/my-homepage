@@ -369,6 +369,75 @@ check(
   serverPy.includes('"messages.js"') && serverPy.includes('"admin.html"')
 );
 
+/* ---------- 5c. 回归防护：钉死踩过的坑 ---------- */
+log("");
+log("== 5c. 回归防护（踩过的坑） ==");
+
+/* 去掉注释再检查 —— 注释里提到某个写法就会让正则误报，这个坑已经踩过两次 */
+const stripComments = (s) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/[^\n]*/gm, "$1");
+
+/* 注意：这里要读后端那份 messages.js（functions/ 下），不是前端的 public/messages.js。
+   msgJs 是前端那份，两者同名但不是同一个文件。 */
+const messagesSrc = stripComments(
+  readFileSync(join(root, "functions", "api", "messages.js"), "utf8")
+);
+const chatSrc = stripComments(
+  readFileSync(join(root, "functions", "api", "chat.js"), "utf8")
+);
+const appSrc = stripComments(appJs);
+const serverSrc = stripComments(serverPy);
+
+/* 2026-09-21：线上 /api/messages 返回 Cloudflare `error code: 1101`（Worker 抛异常）。
+   根因是拿 db.exec() 去跑多条建表 SQL —— 官方文档写明 exec() 只该用于
+   「维护 / 一次性任务」，性能更差也更不安全，多条语句还必须用换行分隔。
+   改成 prepare().run() 逐条执行就通了。这条检查防止它被改回去。 */
+check("messages.js 不再使用 db.exec()", !/\.exec\s*\(/.test(messagesSrc));
+check(
+  "messages.js 用 prepare().run() 建表",
+  /db\.prepare\(sql\)\.run\(\)/.test(messagesSrc)
+);
+check(
+  "messages.js 校验 DB 绑定类型（防绑成普通变量后 1101）",
+  messagesSrc.includes("db_binding_wrong_type")
+);
+check(
+  "messages.js 三个出口都套了异常兜底",
+  ["onRequestGet", "onRequestPost", "onRequestDelete"].every((name) =>
+    new RegExp(
+      `export async function ${name}\\(ctx\\) \\{\\s*return guard\\(`
+    ).test(messagesSrc)
+  )
+);
+
+/* 对话上下文限制：前端 / chat.js / server.py 三处必须一致，否则线上线下表现不同 */
+const pick = (src, re) => {
+  const m = src.match(re);
+  return m ? Number(m[1]) : NaN;
+};
+const nChat = pick(chatSrc, /MAX_TURNS\s*=\s*(\d+)/);
+const nApp = pick(appSrc, /MAX_HISTORY\s*=\s*(\d+)/);
+const nPy = pick(serverSrc, /MAX_CHAT_TURNS\s*=\s*(\d+)/);
+check(
+  `对话上下文三处一致（chat.js=${nChat} / app.js=${nApp} / server.py=${nPy}）`,
+  nChat > 0 && nChat === nApp && nApp === nPy
+);
+check(
+  "app.js 上下文数组会裁剪（不只增不减）",
+  /history\.splice\(/.test(appSrc)
+);
+
+/* server.py 曾经不过滤 role，访客能塞一条 role="system" 插在人设前面把它覆盖掉。
+   chat.js 一直有这个过滤，Python 侧补齐了，这里盯住。 */
+check(
+  "server.py 过滤 role（只放行 user / assistant）",
+  serverSrc.includes('("user", "assistant")')
+);
+check(
+  "server.py 不再把 body.messages 原样转发",
+  !/messages\s*=\s*body\.get\("messages", \[\]\)/.test(serverSrc)
+);
+
 /* ---------- 6. 部署配置 ---------- */
 log("");
 log("== 6. Cloudflare 部署配置 ==");

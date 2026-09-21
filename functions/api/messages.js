@@ -39,7 +39,7 @@ let tableReady = false;
    三个出口
    ============================================================ */
 
-export async function onRequestGet({ request, env }) {
+async function handleGet({ request, env }) {
   const db = requireDb(env);
   if (db instanceof Response) return db;
 
@@ -93,7 +93,7 @@ export async function onRequestGet({ request, env }) {
   });
 }
 
-export async function onRequestPost({ request, env }) {
+async function handlePost({ request, env }) {
   const db = requireDb(env);
   if (db instanceof Response) return db;
 
@@ -177,7 +177,7 @@ export async function onRequestPost({ request, env }) {
   );
 }
 
-export async function onRequestDelete({ request, env }) {
+async function handleDelete({ request, env }) {
   const db = requireDb(env);
   if (db instanceof Response) return db;
 
@@ -204,6 +204,54 @@ export async function onRequestDelete({ request, env }) {
 }
 
 /* ============================================================
+   出口包装
+   —— Cloudflare 对未捕获异常只吐一个 `error code: 1101` 的裸页面，
+      对排查毫无帮助。这里把异常接住，至少让错误有个形状。
+   ============================================================ */
+
+export async function onRequestGet(ctx) {
+  return guard(ctx, handleGet);
+}
+
+export async function onRequestPost(ctx) {
+  return guard(ctx, handlePost);
+}
+
+export async function onRequestDelete(ctx) {
+  return guard(ctx, handleDelete);
+}
+
+async function guard(ctx, fn) {
+  try {
+    return await fn(ctx);
+  } catch (err) {
+    return serverError(err, ctx && ctx.request);
+  }
+}
+
+/** 把异常转成 JSON。原始错误默认不吐给访客，加 ?debug=1 才带出来。 */
+function serverError(err, request) {
+  const detail = String((err && err.message) || err).slice(0, 300);
+  console.error("[messages] 未捕获异常：" + detail);
+
+  const body = {
+    ok: false,
+    error: "server_error",
+    message: "服务器内部错误，请稍后再试",
+  };
+
+  try {
+    if (new URL(request.url).searchParams.get("debug") === "1") {
+      body.detail = detail;
+    }
+  } catch (e) {
+    /* request 不存在或 url 不合法，就不带 detail */
+  }
+
+  return jsonResponse(body, 500);
+}
+
+/* ============================================================
    数据库
    ============================================================ */
 
@@ -219,16 +267,40 @@ function requireDb(env) {
       500
     );
   }
+
+  /* env.DB 存在，不代表它就是数据库绑定。
+     如果这个名字是在 Settings → Variables and Secrets 里用「普通文本」建的，
+     env.DB 就是一个字符串，调 .prepare() 会炸成 Cloudflare 的 error code: 1101 ——
+     一个没有任何线索的裸错误页。这里提前认出来，给一句能照着改的提示。 */
+  if (typeof env.DB.prepare !== "function") {
+    return jsonResponse(
+      {
+        ok: false,
+        error: "db_binding_wrong_type",
+        message:
+          "变量 DB 存在，但它不是 D1 数据库绑定，而是一个普通变量。请到 Pages → Settings → Functions → D1 database bindings 里添加绑定（变量名 DB），并确认 Variables 里没有同名的普通变量。",
+      },
+      500
+    );
+  }
+
   return env.DB;
 }
 
 /**
  * 懒建表：第一次有请求进来时把表和索引建好。
  * 这样你在 Cloudflare 后台不需要手动执行任何 SQL，新建的库直接能用。
+ *
+ * ⚠️ 这里必须用 prepare().run() 逐条执行，**不能用 db.exec()**。
+ * 官方文档对 exec() 的定位是「维护 / 一次性任务」，明确指出它性能更差、更不安全，
+ * 且多条语句要用换行分隔。2026-09-21 线上留言接口返回 error code: 1101（Worker 抛异常）
+ * 就是 exec() 干的；换成 prepare().run() 即好。
+ * 代价只是首次建表多两趟往返 —— 建完 tableReady 置位，之后一辈子不再跑。
  */
 async function ensureTable(db) {
   if (tableReady) return;
-  await db.exec(
+
+  const statements = [
     `CREATE TABLE IF NOT EXISTS messages (
        id         INTEGER PRIMARY KEY AUTOINCREMENT,
        name       TEXT    NOT NULL,
@@ -236,10 +308,15 @@ async function ensureTable(db) {
        is_private INTEGER NOT NULL DEFAULT 0,
        ip_hash    TEXT    NOT NULL DEFAULT '',
        created_at TEXT    NOT NULL
-     );
-     CREATE INDEX IF NOT EXISTS idx_messages_public ON messages(is_private, id DESC);
-     CREATE INDEX IF NOT EXISTS idx_messages_ip     ON messages(ip_hash, created_at);`
-  );
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_messages_public ON messages(is_private, id DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_messages_ip ON messages(ip_hash, created_at)`,
+  ];
+
+  for (const sql of statements) {
+    await db.prepare(sql).run();
+  }
+
   tableReady = true;
 }
 

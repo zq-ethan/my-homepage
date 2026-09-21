@@ -32,6 +32,13 @@ DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 PORT = int(os.getenv("PORT", "5000"))
 
+# ---------- 对话上下文限制 ----------
+# 和 functions/api/chat.js 的 MAX_TURNS / MAX_CHARS 必须一致，否则线上线下表现不同。
+# 20 条 ≈ 10 轮问答：访客一般问 3~8 个问题就走，10 轮足够覆盖；
+# 更长除了让模型更"记得住"，边际收益递减，而输入 token 成本会线性上涨。
+MAX_CHAT_TURNS = 20      # 最多带多少条消息
+MAX_CHAT_CHARS = 2000    # 单条消息最大长度，防有人塞超长内容烧 token
+
 # ---------- 留言板配置 ----------
 # 线上这些变量在 Cloudflare 后台配（ADMIN_TOKEN 类型选 Secret）。
 # 本地开着方便调试：ADMIN_TOKEN 不填 = 管理接口关闭（不能变成谁都能删留言）。
@@ -96,18 +103,44 @@ def health():
 @app.post("/api/chat")
 async def chat(req: Request):
     """
-    请求体：{ messages: [...], system?: "..." }
+    请求体：{ messages: [{ role, content }, ...] }
     返回：SSE 流，每行 data: {content:"..."} 或 data: [DONE]
-    """
-    body = await req.json()
-    messages = body.get("messages", [])
 
+    和 functions/api/chat.js 是同一套逻辑的两份实现，限制值必须一致。
+    """
     if not DEEPSEEK_API_KEY:
         return JSONResponse(
             {"error": "server_missing_key", "message": "服务器未配置 DEEPSEEK_API_KEY，请填 .env"},
             status_code=500,
         )
 
+    try:
+        body = await req.json()
+    except Exception:
+        return JSONResponse(
+            {"error": "bad_request", "message": "请求体不是合法 JSON"}, status_code=400
+        )
+
+    raw = body.get("messages")
+
+    # 只挑 role / content 两个字段，丢掉任何多余的东西。
+    # role 只放行 user / assistant —— 否则访客可以塞一条 role="system" 的内容，
+    # 在人设前面插话，等于把人设覆盖掉（线上 chat.js 一直有这个过滤，这里补齐）。
+    cleaned = [
+        {"role": m["role"], "content": m["content"][:MAX_CHAT_CHARS]}
+        for m in (raw if isinstance(raw, list) else [])
+        if isinstance(m, dict)
+        and m.get("role") in ("user", "assistant")
+        and isinstance(m.get("content"), str)
+    ]
+    messages = cleaned[-MAX_CHAT_TURNS:]
+
+    if not messages:
+        return JSONResponse(
+            {"error": "bad_request", "message": "messages 为空"}, status_code=400
+        )
+
+    # 人设永远排在第一条，前端传不进来也覆盖不掉
     full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
 
     async def stream_to_client():

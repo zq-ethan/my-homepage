@@ -89,8 +89,18 @@ let backendReady = false; // 本地后端是否可用（探活通过 + 已配 ke
 let modelName = "";       // 后端实际使用的模型名，仅用于状态徽标显示
 let controller = null;    // 当前请求，用于中止
 const history = []; // 最近若干轮对话（模型上下文）
-const MAX_HISTORY = 8;
+const MAX_HISTORY = 20; // 最多带 20 条消息（≈10 轮问答），与后端 MAX_TURNS 对齐
 const MAX_INPUT = 500;
+
+/* 把一条消息推进上下文，并裁掉过老的。
+   发送时虽然也 slice(-MAX_HISTORY)，但本地这个数组本身只增不减 ——
+   一次聊得久了，它会从第一句一直存到现在，纯属白占内存。 */
+function pushHistory(entry) {
+  history.push(entry);
+  if (history.length > MAX_HISTORY) {
+    history.splice(0, history.length - MAX_HISTORY);
+  }
+}
 
 /* ---------- DOM ---------- */
 const chatLog = document.getElementById("chatLog");
@@ -190,7 +200,7 @@ async function askLLM(question) {
   chatInput.disabled = true;
 
   const botEl = addMessage("", "bot");
-  history.push({ role: "user", content: question });
+  pushHistory({ role: "user", content: question });
 
   let acc = "";
   let failed = null;
@@ -274,7 +284,7 @@ async function askLLM(question) {
     return;
   }
 
-  history.push({ role: "assistant", content: acc });
+  pushHistory({ role: "assistant", content: acc });
 }
 
 /* ---------- 事件 ---------- */
