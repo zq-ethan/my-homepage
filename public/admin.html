@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>留言管理 · 赵泉恩</title>
+  <!-- 别让搜索引擎把管理页收进去 -->
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* 管理页专属样式。放在页面内而不是 styles.css：
+       这是给自己用的后台，不该让访客也下载这些规则。 */
+    .admin-page { max-width: 820px; }
+
+    .admin-title {
+      margin: 0 0 6px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .admin-sub {
+      margin: 0 0 24px;
+      font-size: 13.5px;
+      color: var(--text-dim);
+    }
+
+    .admin-gate {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .admin-gate input {
+      flex: 1;
+      min-width: 0;
+      padding: 11px 14px;
+      font-size: 14.5px;
+      font-family: inherit;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+    }
+
+    .admin-gate input:focus {
+      border-color: #b9c9ff;
+      box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+    }
+
+    .admin-gate button,
+    .admin-bar button {
+      padding: 10px 18px;
+      font-size: 14px;
+      font-family: inherit;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+
+    .admin-gate button:hover,
+    .admin-bar button:hover { opacity: 0.9; }
+
+    .admin-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .admin-bar .stat {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-right: auto;
+    }
+
+    .admin-bar button.ghost {
+      color: var(--text-dim);
+      background: #fff;
+      border: 1px solid var(--line);
+    }
+
+    .admin-item {
+      margin-bottom: 10px;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* 悄悄话单独标色，扫一眼就知道哪条是别人私下说的 */
+    .admin-item.is-private {
+      background: #fffdf7;
+      border-color: #f0e2c4;
+    }
+
+    .admin-item-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .admin-item-name { font-size: 13.5px; font-weight: 600; color: #43506e; }
+    .admin-item-meta { font-size: 12px; color: var(--text-faint); }
+
+    .admin-badge {
+      padding: 1px 8px;
+      font-size: 11px;
+      color: #b4791f;
+      background: #fff4e5;
+      border: 1px solid #ffe0b8;
+      border-radius: 999px;
+    }
+
+    .admin-item-body {
+      font-size: 14.5px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .admin-item-foot {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .admin-del {
+      padding: 5px 12px;
+      font-size: 12.5px;
+      font-family: inherit;
+      color: #c0561a;
+      background: #fff;
+      border: 1px solid #f0d5c4;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .admin-del:hover { background: #fdf3ec; }
+    .admin-del:disabled { opacity: 0.5; cursor: default; }
+
+    .admin-msg {
+      margin-top: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .admin-msg.error { color: #c0561a; }
+    .admin-msg.ok { color: #2f9e63; }
+  </style>
+</head>
+<body>
+  <div class="page admin-page">
+    <h1 class="admin-title">留言管理</h1>
+    <p class="admin-sub">
+      这里能看到全部留言（含标了「悄悄话」的），顺手可以删垃圾。<br />
+      口令存在 Cloudflare 的环境变量 <code>ADMIN_TOKEN</code> 里，这个页面只是把它带上去。
+    </p>
+
+    <!-- 未登录：只显示口令框 -->
+    <div id="gate">
+      <div class="admin-gate">
+        <input
+          type="password"
+          id="tokenInput"
+          placeholder="管理口令"
+          autocomplete="current-password"
+          aria-label="管理口令"
+        />
+        <button id="tokenBtn" type="button">进入</button>
+      </div>
+      <div class="admin-msg" id="gateMsg"></div>
+    </div>
+
+    <!-- 登录后 -->
+    <div id="main" hidden>
+      <div class="admin-bar">
+        <span class="stat" id="stat"></span>
+        <button class="ghost" id="refreshBtn" type="button">刷新</button>
+        <button class="ghost" id="logoutBtn" type="button">退出</button>
+      </div>
+
+      <div id="adminList"></div>
+      <div class="admin-msg" id="adminMsg"></div>
+    </div>
+  </div>
+
+  <script>
+    /* 管理页前端。
+       唯一的原则：留言是陌生人写的，所有输出走 textContent，绝不用 innerHTML。 */
+    (function () {
+      "use strict";
+
+      var API =
+        (location.hostname === "localhost" ? "http://localhost:5000" : "") +
+        "/api/messages?all=1";
+
+      // 口令放 localStorage：省得每次进来都敲一遍。
+      // 代价是页面里若有第三方脚本就能读到它 —— 所以这个页面不引任何外部 JS。
+      var TOKEN_KEY = "zqe_admin_token";
+
+      var $ = function (id) { return document.getElementById(id); };
+
+      var gate = $("gate");
+      var main = $("main");
+      var tokenInput = $("tokenInput");
+      var gateMsg = $("gateMsg");
+      var adminMsg = $("adminMsg");
+      var stat = $("stat");
+      var listBox = $("adminList");
+
+      var token = "";
+
+      function setMsg(el, text, kind) {
+        el.textContent = text || "";
+        el.className = "admin-msg" + (kind ? " " + kind : "");
+      }
+
+      function formatTime(iso) {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return iso || "";
+        var pad = function (n) { return String(n).padStart(2, "0"); };
+        return (
+          d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+          " " + pad(d.getHours()) + ":" + pad(d.getMinutes())
+        );
+      }
+
+      /* ---------- 渲染 ---------- */
+
+      function makeItem(msg) {
+        var item = document.createElement("div");
+        item.className = "admin-item" + (msg.isPrivate ? " is-private" : "");
+
+        var head = document.createElement("div");
+        head.className = "admin-item-head";
+
+        if (msg.isPrivate) {
+          var badge = document.createElement("span");
+          badge.className = "admin-badge";
+          badge.textContent = "悄悄话";
+          head.appendChild(badge);
+        }
+
+        var who = document.createElement("span");
+        who.className = "admin-item-name";
+        who.textContent = msg.name || "匿名";
+
+        var meta = document.createElement("span");
+        meta.className = "admin-item-meta";
+        meta.textContent =
+          "#" + msg.id +
+          " · " + formatTime(msg.createdAt) +
+          (msg.ipHash ? " · IP " + msg.ipHash : "");
+
+        head.append(who, meta);
+
+        var body = document.createElement("div");
+        body.className = "admin-item-body";
+        body.textContent = msg.content;
+
+        var foot = document.createElement("div");
+        foot.className = "admin-item-foot";
+
+        var del = document.createElement("button");
+        del.className = "admin-del";
+        del.type = "button";
+        del.textContent = "删除";
+        del.addEventListener("click", function () { remove(msg, del); });
+
+        foot.appendChild(del);
+
+        item.append(head, body, foot);
+        return item;
+      }
+
+      function render(messages) {
+        listBox.textContent = "";
+        stat.textContent =
+          "共 " + messages.length + " 条，其中悄悄话 " +
+          messages.filter(function (m) { return m.isPrivate; }).length + " 条";
+
+        if (!messages.length) {
+          var empty = document.createElement("div");
+          empty.className = "admin-msg";
+          empty.textContent = "还没有留言。";
+          listBox.appendChild(empty);
+          return;
+        }
+        messages.forEach(function (m) { listBox.appendChild(makeItem(m)); });
+      }
+
+      /* ---------- 请求 ---------- */
+
+      function load() {
+        setMsg(adminMsg, "加载中…", "");
+        fetch(API, { headers: { "X-Admin-Token": token } })
+          .then(function (resp) {
+            return resp.json().then(function (data) { return { resp: resp, data: data }; });
+          })
+          .then(function (r) {
+            if (r.resp.status === 401) throw new Error("口令不对");
+            if (!r.data.ok) throw new Error(r.data.message || r.data.error || "加载失败");
+
+            gate.hidden = true;
+            main.hidden = false;
+            setMsg(adminMsg, "", "");
+            render(r.data.messages || []);
+          })
+          .catch(function (err) {
+            setMsg(adminMsg, "加载失败：" + (err.message || err), "error");
+            // 口令错就别硬撑了，退回登录框重来
+            if (String(err.message || "").indexOf("口令") !== -1) {
+              localStorage.removeItem(TOKEN_KEY);
+              gate.hidden = false;
+              main.hidden = true;
+              setMsg(gateMsg, "口令不对，重新输入。", "error");
+            }
+          });
+      }
+
+      function remove(msg, btn) {
+        if (!confirm("确定删掉 #" + msg.id + " 这条留言？删了拿不回来。")) return;
+
+        btn.disabled = true;
+        btn.textContent = "删除中…";
+
+        fetch(
+          (location.hostname === "localhost" ? "http://localhost:5000" : "") +
+            "/api/messages?id=" + encodeURIComponent(msg.id),
+          { method: "DELETE", headers: { "X-Admin-Token": token } }
+        )
+          .then(function (resp) {
+            return resp.json().then(function (data) { return { resp: resp, data: data }; });
+          })
+          .then(function (r) {
+            if (!r.data.ok) throw new Error(r.data.message || "删除失败");
+            setMsg(adminMsg, "已删除 #" + msg.id, "ok");
+            load();
+          })
+          .catch(function (err) {
+            setMsg(adminMsg, "删除失败：" + (err.message || err), "error");
+            btn.disabled = false;
+            btn.textContent = "删除";
+          });
+      }
+
+      /* ---------- 事件 ---------- */
+
+      $("tokenBtn").addEventListener("click", function () {
+        var value = tokenInput.value.trim();
+        if (!value) {
+          setMsg(gateMsg, "先输入口令", "error");
+          return;
+        }
+        token = value;
+        localStorage.setItem(TOKEN_KEY, value);
+        setMsg(gateMsg, "", "");
+        load();
+      });
+
+      tokenInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") $("tokenBtn").click();
+      });
+
+      $("refreshBtn").addEventListener("click", load);
+
+      $("logoutBtn").addEventListener("click", function () {
+        localStorage.removeItem(TOKEN_KEY);
+        token = "";
+        tokenInput.value = "";
+        main.hidden = true;
+        gate.hidden = false;
+        listBox.textContent = "";
+        setMsg(gateMsg, "已退出。", "");
+      });
+
+      /* ---------- 启动：有存过口令就直接进去 ---------- */
+      var saved = localStorage.getItem(TOKEN_KEY);
+      if (saved) {
+        token = saved;
+        load();
+      } else {
+        tokenInput.focus();
+      }
+    })();
+  </script>
+</body>
+</html>

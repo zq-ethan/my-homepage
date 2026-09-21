@@ -75,6 +75,17 @@ try {
   check("health.js 可导入", false, String(err));
 }
 
+let messages;
+try {
+  messages = await load("functions/api/messages.js");
+  check("messages.js 可导入", true);
+  check("导出了 onRequestGet", typeof messages.onRequestGet === "function");
+  check("导出了 onRequestPost", typeof messages.onRequestPost === "function");
+  check("导出了 onRequestDelete", typeof messages.onRequestDelete === "function");
+} catch (err) {
+  check("messages.js 可导入", false, String(err));
+}
+
 /* ---------- 3. SSE 转换 ---------- */
 log("");
 log("== 3. SSE 格式转换 ==");
@@ -163,7 +174,144 @@ if (health?.onRequestGet) {
   check("配了 key → hasKey=true", h2.hasKey === true && h2.model === "deepseek-chat", JSON.stringify(h2));
 }
 
-/* ---------- 5. 前端与函数的路由对得上 ---------- */
+/* ---------- 4b. 留言接口 ---------- */
+log("");
+log("== 4b. 留言接口（/api/messages） ==");
+
+if (messages) {
+  /* --- 文本清洗 --- */
+  check("昵称留空 → 匿名", messages.sanitizeName("   ") === "匿名");
+  check("昵称超长被截断", messages.sanitizeName("a".repeat(50)).length === 20);
+  check("昵称里的多余空白被压掉", messages.sanitizeName("  a   b  ") === "a b");
+  check("正文去首尾空白", messages.sanitizeContent("  hi  ") === "hi");
+  check("正文超长被截断", messages.sanitizeContent("x".repeat(600)).length === 500);
+  check("正文不是字符串 → 空串", messages.sanitizeContent(null) === "");
+  check("纯空白正文 → 空串（发不出去）", messages.sanitizeContent("   ") === "");
+
+  /* --- IP 哈希：要能认人，但认不出是谁 --- */
+  const h1 = await messages.hashIp("1.2.3.4");
+  const h2 = await messages.hashIp("1.2.3.4");
+  const h3 = await messages.hashIp("1.2.3.5");
+  check("同一 IP 哈希稳定且是 64 位十六进制", h1 === h2 && /^[0-9a-f]{64}$/.test(h1));
+  check("不同 IP 哈希不同", h1 !== h3);
+  check("哈希里不含 IP 明文", !h1.includes("1.2.3.4"));
+
+  /* --- 管理口令：没配就等于关闭，绝不能默认放行 --- */
+  const withToken = (t) =>
+    new Request("https://example.com/api/messages", {
+      headers: t ? { "X-Admin-Token": t } : {},
+    });
+  check(
+    "没配 ADMIN_TOKEN 时，带任何口令都拒绝",
+    messages.isAdmin(withToken("anything"), {}) === false
+  );
+  check(
+    "口令正确时通过",
+    messages.isAdmin(withToken("s3cret"), { ADMIN_TOKEN: "s3cret" }) === true
+  );
+  check(
+    "口令错误时拒绝",
+    messages.isAdmin(withToken("wrong"), { ADMIN_TOKEN: "s3cret" }) === false
+  );
+  check(
+    "不带口令头时拒绝",
+    messages.isAdmin(withToken(""), { ADMIN_TOKEN: "s3cret" }) === false
+  );
+
+  /* --- 没绑定 D1：要给出可读的报错，而不是抛异常 --- */
+  const noDb = await messages.onRequestGet({
+    request: new Request("https://example.com/api/messages"),
+    env: {},
+  });
+  const noDbData = await noDb.json();
+  check(
+    "未绑定 D1 → 500 + db_not_bound",
+    noDb.status === 500 && noDbData.error === "db_not_bound",
+    JSON.stringify(noDbData)
+  );
+
+  /* --- 用一个假 D1 走一遍发留言的主流程 --- */
+  const fakeDb = {
+    exec: async () => ({}),
+    prepare: () => ({
+      bind() {
+        return this;
+      },
+      all: async () => ({ results: [] }),
+      first: async () => ({ n: 0 }),
+      run: async () => ({ meta: { last_row_id: 42, changes: 1 } }),
+    }),
+  };
+
+  const post = (body, extraEnv = {}) =>
+    messages.onRequestPost({
+      request: new Request("https://example.com/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": "1.2.3.4",
+        },
+        body: JSON.stringify(body),
+      }),
+      env: { DB: fakeDb, ...extraEnv },
+    });
+
+  const p1 = await post({ content: "" });
+  check("空内容 → 400", p1.status === 400, JSON.stringify(await p1.json()));
+
+  const p2 = await post({ content: "  hello  " });
+  const d2 = await p2.json();
+  check("正常留言 → 201", p2.status === 201 && d2.ok === true, JSON.stringify(d2));
+  check("公开留言 visible=true", d2.visible === true);
+  check("昵称没填自动变匿名", d2.message.name === "匿名");
+  check("正文首尾空白已去掉", d2.message.content === "hello");
+  check("返回体带 id 和时间", d2.message.id === 42 && typeof d2.message.createdAt === "string");
+
+  const p3 = await post({ content: "悄悄说一句", isPrivate: true });
+  const d3 = await p3.json();
+  check(
+    "悄悄话 visible=false（前端不会插进公开列表）",
+    d3.visible === false && d3.message.isPrivate === true,
+    JSON.stringify(d3)
+  );
+
+  const p4 = await messages.onRequestPost({
+    request: new Request("https://example.com/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "这不是 JSON",
+    }),
+    env: { DB: fakeDb },
+  });
+  check("请求体不是 JSON → 400", p4.status === 400);
+
+  /* --- 删除必须带口令 --- */
+  const del1 = await messages.onRequestDelete({
+    request: new Request("https://example.com/api/messages?id=1", { method: "DELETE" }),
+    env: { DB: fakeDb },
+  });
+  check("没配口令时删除 → 401", del1.status === 401);
+
+  const del2 = await messages.onRequestDelete({
+    request: new Request("https://example.com/api/messages?id=abc", {
+      method: "DELETE",
+      headers: { "X-Admin-Token": "s3cret" },
+    }),
+    env: { DB: fakeDb, ADMIN_TOKEN: "s3cret" },
+  });
+  check("id 不合法 → 400", del2.status === 400);
+
+  const del3 = await messages.onRequestDelete({
+    request: new Request("https://example.com/api/messages?id=7", {
+      method: "DELETE",
+      headers: { "X-Admin-Token": "s3cret" },
+    }),
+    env: { DB: fakeDb, ADMIN_TOKEN: "s3cret" },
+  });
+  const d3r = await del3.json();
+  check("带正确口令删除 → 200", del3.status === 200 && d3r.ok === true, JSON.stringify(d3r));
+}
+
 log("");
 log("== 5. 前后端接口是否对得上 ==");
 
@@ -173,6 +321,53 @@ check("前端请求 /api/chat", appJs.includes("`${API_BASE}/api/chat`"));
 check("非 localhost 时走同域（API_BASE 为空串）", /location\.hostname === "localhost" \? "http:\/\/localhost:5000" : ""/.test(appJs));
 check("前端认 { content } 字段", appJs.includes("obj.content"));
 check("前端认 [DONE] 标记", appJs.includes("[DONE]"));
+
+/* ---------- 5b. 留言板：前后端字段名要对得上 ---------- */
+log("");
+log("== 5b. 留言板前后端对齐 ==");
+
+const msgJs = readFileSync(join(root, "public", "messages.js"), "utf8");
+check("留言前端请求 /api/messages", msgJs.includes('"/api/messages"'));
+check("留言前端用 textContent 渲染（防 XSS）", !/\binnerHTML\s*=/.test(msgJs));
+check("留言前端字段 isPrivate 对得上后端", msgJs.includes("isPrivate"));
+check("留言前端字段 turnstileToken 对得上后端", msgJs.includes("turnstileToken"));
+check("留言前端读取 turnstileSiteKey", msgJs.includes("turnstileSiteKey"));
+check("留言前端不覆盖全局 API_BASE（IIFE 包裹）", msgJs.trimStart().startsWith("/*") && msgJs.includes("(function () {"));
+
+const adminHtml = readFileSync(join(root, "public", "admin.html"), "utf8");
+check("管理页走 ?all=1 拿全部留言", adminHtml.includes("all=1"));
+check("管理页带 X-Admin-Token 头", adminHtml.includes("X-Admin-Token"));
+check("管理页渲染不用 innerHTML", !/\binnerHTML\s*=/.test(adminHtml));
+check("管理页声明了 noindex", adminHtml.includes("noindex"));
+check("管理页删除走 DELETE 方法", adminHtml.includes('method: "DELETE"'));
+
+const indexHtml = readFileSync(join(root, "public", "index.html"), "utf8");
+check("首页已引入 messages.js", indexHtml.includes('src="messages.js"'));
+check(
+  "首页留言区容器齐全",
+  ["msgForm", "msgList", "msgContent", "msgPrivate", "msgTurnstile"].every((id) =>
+    indexHtml.includes(`id="${id}"`)
+  )
+);
+
+const stylesCss = readFileSync(join(root, "public", "styles.css"), "utf8");
+check("留言板样式已加", stylesCss.includes(".msg-board") && stylesCss.includes(".msg-item"));
+check("留言板有手机端适配", /@media \(max-width: 899px\)[\s\S]*\.msg-board \{ grid-template-columns: 1fr;/.test(stylesCss));
+
+/* server.py 是同一套逻辑的 Python 版，漏了就会线上线下不一致 */
+const serverPy = readFileSync(join(root, "server.py"), "utf8");
+check("server.py 也有 /api/messages 路由", serverPy.includes('"/api/messages"'));
+check(
+  "server.py 三种方法齐全",
+  serverPy.includes('.get("/api/messages")') &&
+    serverPy.includes('.post("/api/messages")') &&
+    serverPy.includes('.delete("/api/messages")')
+);
+check("server.py 没配 ADMIN_TOKEN 时拒绝管理", serverPy.includes("if not ADMIN_TOKEN:"));
+check(
+  "server.py 前端白名单含新文件",
+  serverPy.includes('"messages.js"') && serverPy.includes('"admin.html"')
+);
 
 /* ---------- 6. 部署配置 ---------- */
 log("");

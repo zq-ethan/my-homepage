@@ -126,6 +126,53 @@
 
     </div><!-- /.content-grid -->
 
+    <!-- ===== 留言 / 带话 ===== -->
+    <section class="section section-messages">
+      <h2 class="section-title">
+        留言 / 带话
+        <span class="section-note">公开留言大家都能看到；勾了「悄悄话」就只有我能看到</span>
+      </h2>
+
+      <div class="msg-board">
+        <!-- 写留言 -->
+        <form class="msg-form" id="msgForm" autocomplete="off">
+          <div class="msg-form-row">
+            <input
+              type="text"
+              id="msgName"
+              placeholder="怎么称呼（可以不填）"
+              maxlength="20"
+              aria-label="你的昵称"
+            />
+            <label class="msg-private" for="msgPrivate">
+              <input type="checkbox" id="msgPrivate" />
+              <span>悄悄话</span>
+            </label>
+          </div>
+
+          <textarea
+            id="msgContent"
+            rows="3"
+            maxlength="500"
+            placeholder="说点什么……可以提问、提建议，或者单纯打个招呼"
+            aria-label="留言内容"
+          ></textarea>
+
+          <div class="msg-turnstile" id="msgTurnstile" hidden></div>
+
+          <div class="msg-form-foot">
+            <span class="msg-counter" id="msgCounter">0 / 500</span>
+            <button type="submit" id="msgSend">发送</button>
+          </div>
+
+          <div class="msg-hint" id="msgHint"></div>
+        </form>
+
+        <!-- 留言列表 -->
+        <div class="msg-list" id="msgList"></div>
+      </div>
+    </section>
+
     <!-- ===== 联系方式 ===== -->
     <section class="section section-contact">
       <h2 class="section-title">联系我</h2>
@@ -143,5 +190,7 @@
 
   <!-- 数字分身 v3：本地后端 server.py 转发到 DeepSeek，不再依赖 WorkBuddy SDK -->
   <script src="app.js"></script>
+  <!-- 留言板：数据存在 Cloudflare D1（线上）/ 本地 sqlite（离线） -->
+  <script src="messages.js"></script>
 </body>
 </html>

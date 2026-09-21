@@ -13,7 +13,11 @@ venv/
 
 # 本地测试报告（由 tools/*.mjs、tools/*.py 生成，属于临时产物）
 tools/_report*.txt
-tools/_pwlog.txt
+tools/_pwlog*.txt
+
+# 留言板本地数据库（线上存 Cloudflare D1，这个只是本地开发用）
+messages.db
+messages.db-journal
 
 # IDE
 .vscode/
