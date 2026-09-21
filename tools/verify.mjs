@@ -137,10 +137,16 @@ if (chat?.makeSseTransformer) {
 log("");
 log("== 4. 请求处理 ==");
 
-const mkReq = (body) =>
-  new Request("https://example.com/api/chat", {
+/* 默认带上合法的 Origin —— 浏览器发起同源 POST 一定会带这个头，
+   而 chat.js 现在会校验它。故意不带的场景在下面单独测。 */
+const mkReq = (body, headers = {}) =>
+  new Request("https://zqe.ccwu.cc/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "https://zqe.ccwu.cc",
+      ...headers,
+    },
     body: JSON.stringify(body),
   });
 
@@ -160,6 +166,83 @@ if (chat?.onRequestPost) {
     env: { DEEPSEEK_API_KEY: "sk-fake-for-test" },
   });
   check("非法 role 被拦下（返回 400）", r3.status === 400);
+
+  /* ---------- 来源白名单 ---------- */
+  const fakeEnv = { DEEPSEEK_API_KEY: "sk-fake-for-test" };
+
+  const rNoOrigin = await chat.onRequestPost({
+    request: new Request("https://zqe.ccwu.cc/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [] }),
+    }),
+    env: fakeEnv,
+  });
+  const dNoOrigin = await rNoOrigin.json();
+  check(
+    "不带 Origin（≈curl）返回 403",
+    rNoOrigin.status === 403 && dNoOrigin.error === "forbidden_origin",
+    JSON.stringify(dNoOrigin)
+  );
+
+  const rBadOrigin = await chat.onRequestPost({
+    request: mkReq({ messages: [] }, { Origin: "https://evil.example.com" }),
+    env: fakeEnv,
+  });
+  check("陌生 Origin 返回 403", rBadOrigin.status === 403, rBadOrigin.status);
+
+  const rReferer = await chat.onRequestPost({
+    request: mkReq(
+      { messages: [] },
+      { Origin: "", Referer: "https://zqe.ccwu.cc/index.html" }
+    ),
+    env: fakeEnv,
+  });
+  check(
+    "只有 Referer 时仍放行（走到后面的校验，返回 400）",
+    rReferer.status === 400,
+    rReferer.status
+  );
+
+  const rLocal = await chat.onRequestPost({
+    request: mkReq({ messages: [] }, { Origin: "http://localhost:5000" }),
+    env: fakeEnv,
+  });
+  check("localhost 放行（本地开发不受影响）", rLocal.status === 400, rLocal.status);
+}
+
+/* ---------- 限流：直接测函数，避免真的去调 DeepSeek ---------- */
+if (chat?.checkChatLimit) {
+  const t0 = 1700000000000;
+
+  const l1 = await chat.checkChatLimit({}, "hash-a", t0);
+  const l2 = await chat.checkChatLimit({}, "hash-a", t0 + 1000);
+  const l3 = await chat.checkChatLimit({}, "hash-a", t0 + 4000);
+  check("限流：首次放行", l1.ok === true, JSON.stringify(l1));
+  check(
+    "限流：间隔内被拦（chat_too_fast）",
+    l2.ok === false && l2.error === "chat_too_fast",
+    JSON.stringify(l2)
+  );
+  check("限流：过了间隔又放行", l3.ok === true, JSON.stringify(l3));
+
+  const dailyCap = chat.__test__?.CHAT_DAILY_PER_IP || 60;
+  let hitDaily = false;
+  let t = t0;
+  for (let i = 0; i < dailyCap + 5; i++) {
+    t += 4000;
+    const res = await chat.checkChatLimit({}, "hash-daily", t);
+    if (!res.ok && res.error === "chat_daily_limit") {
+      hitDaily = true;
+      break;
+    }
+  }
+  check(`限流：连问 ${dailyCap} 次后撞上个人日上限`, hitDaily);
+
+  check(
+    `限流参数是预期值（${dailyCap}/天，间隔 ${chat.__test__?.CHAT_MIN_INTERVAL_MS}ms）`,
+    dailyCap === 60 && chat.__test__?.CHAT_MIN_INTERVAL_MS === 3000
+  );
 }
 
 if (health?.onRequestGet) {
@@ -453,6 +536,68 @@ check(
 check(
   "server.py 不再把 body.messages 原样转发",
   !/messages\s*=\s*body\.get\("messages", \[\]\)/.test(serverSrc)
+);
+
+/* 2026-09-21：/api/chat 之前完全没有防护，谁都能 curl 循环刷 DeepSeek 余额。
+   现在三层拦住：来源白名单 / IP 限流 / 全站日上限，外加 max_tokens 钉死单次成本。 */
+check(
+  "chat.js 有来源白名单",
+  chatSrc.includes("isAllowedOrigin") && chatSrc.includes("forbidden_origin")
+);
+check(
+  "chat.js 有 IP 限流 + 全站日上限",
+  /CHAT_MIN_INTERVAL_MS\s*=/.test(chatSrc) &&
+    /CHAT_DAILY_PER_IP\s*=/.test(chatSrc) &&
+    /CHAT_DAILY_GLOBAL\s*=/.test(chatSrc)
+);
+check("chat.js 给上游传了 max_tokens", /max_tokens:\s*MAX_TOKENS/.test(chatSrc));
+check(
+  "chat.js 建表用 prepare().run()（不用 exec）",
+  !/\.exec\s*\(/.test(chatSrc) && /db\s*\.prepare\(/.test(chatSrc)
+);
+check(
+  "server.py 补齐了聊天的来源白名单与限流",
+  serverSrc.includes("is_allowed_origin") && serverSrc.includes("check_chat_limit")
+);
+check(
+  "server.py 给上游传了 max_tokens",
+  /"max_tokens":\s*MAX_CHAT_TOKENS/.test(serverSrc)
+);
+
+/* 限流参数两侧必须一致，否则线上线下行为不同 */
+const nPyMinInterval = pick(serverSrc, /CHAT_MIN_INTERVAL_SECONDS\s*=\s*(\d+)/);
+const nPyPerIp = pick(serverSrc, /CHAT_DAILY_PER_IP\s*=\s*(\d+)/);
+const nPyGlobal = pick(serverSrc, /CHAT_DAILY_GLOBAL\s*=\s*(\d+)/);
+const nChatMinInterval = pick(chatSrc, /CHAT_MIN_INTERVAL_MS\s*=\s*(\d+)/);
+const nChatPerIp = pick(chatSrc, /CHAT_DAILY_PER_IP\s*=\s*(\d+)/);
+const nChatGlobal = pick(chatSrc, /CHAT_DAILY_GLOBAL\s*=\s*(\d+)/);
+check(
+  `聊天限流参数两侧一致（间隔 ${nChatMinInterval}ms/${nPyMinInterval}s，单IP ${nChatPerIp}/${nPyPerIp}，全站 ${nChatGlobal}/${nPyGlobal}）`,
+  nChatPerIp > 0 &&
+    nChatPerIp === nPyPerIp &&
+    nChatGlobal === nPyGlobal &&
+    nChatMinInterval === nPyMinInterval * 1000
+);
+
+/* 输入 / 输出上限也要一致 */
+const nChatChars = pick(chatSrc, /MAX_CHARS\s*=\s*(\d+)/);
+const nPyChars = pick(serverSrc, /MAX_CHAT_CHARS\s*=\s*(\d+)/);
+const nChatTokens = pick(chatSrc, /MAX_TOKENS\s*=\s*(\d+)/);
+const nPyTokens = pick(serverSrc, /MAX_CHAT_TOKENS\s*=\s*(\d+)/);
+check(
+  `单条消息上限两侧一致（chat.js=${nChatChars} / server.py=${nPyChars}）`,
+  nChatChars > 0 && nChatChars === nPyChars
+);
+check(
+  `单次输出上限两侧一致（chat.js=${nChatTokens} / server.py=${nPyTokens}）`,
+  nChatTokens > 0 && nChatTokens === nPyTokens
+);
+
+/* 留言最小间隔也是前后端一起来（用户要求 60 秒改 20 秒） */
+check(
+  "留言最小间隔 20 秒且两侧一致",
+  /RATE_WINDOW_MS\s*=\s*20\s*\*\s*1000/.test(messagesSrc) &&
+    /RATE_WINDOW_SECONDS\s*=\s*20\b/.test(serverSrc)
 );
 
 /* ---------- 6. 部署配置 ---------- */

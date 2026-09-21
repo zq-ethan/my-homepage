@@ -26,7 +26,7 @@
 /* ---------- 可调参数 ---------- */
 const MAX_NAME = 20;             // 昵称最长字符数
 const MAX_CONTENT = 500;         // 留言正文最长字符数
-const RATE_WINDOW_MS = 60 * 1000;      // 同一个人两次留言的最小间隔
+const RATE_WINDOW_MS = 20 * 1000;      // 同一个人两次留言的最小间隔（20 秒）
 const RATE_DAILY_LIMIT = 10;     // 同一个人 24 小时内最多发几条
 const PUBLIC_PAGE_SIZE = 50;     // 公开列表一次最多返回几条
 const ADMIN_PAGE_SIZE = 500;     // 管理页一次最多返回几条
@@ -352,7 +352,7 @@ function toMessage(row) {
    ============================================================ */
 
 /**
- * 两层限制：60 秒内不能发第二条，24 小时内最多 10 条。
+ * 两层限制：20 秒内不能发第二条，24 小时内最多 10 条。
  * 用 ISO 时间字符串直接做大小比较 —— ISO 8601 的字典序就是时间序，
  * 不需要在数据库里存时间戳。
  */
@@ -364,7 +364,7 @@ export async function checkRateLimit(db, ipHash, now = Date.now()) {
     .first();
 
   if (recent && recent.n > 0) {
-    return { ok: false, message: "刚发过了，等一分钟再发第二条" };
+    return { ok: false, message: "刚发过了，等 20 秒再发第二条" };
   }
 
   const dayAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();

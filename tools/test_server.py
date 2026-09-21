@@ -75,7 +75,7 @@ try:
     def row(label, ok, extra=""):
         out.append(f"  {'OK ' if ok else 'BAD'} {label}{('   ' + str(extra)) if extra else ''}")
 
-    # 绕过"同一 IP 一分钟只能发一条"，把已有记录的时间往前挪
+    # 绕过"同一 IP 20 秒内只能发一条"，把已有记录的时间往前挪
     def bypass_rate_limit():
         conn = sqlite3.connect(server.MSG_DB_PATH)
         conn.execute("UPDATE messages SET created_at = '2020-01-01T00:00:00.000Z'")
@@ -96,7 +96,7 @@ try:
     row("公开发言成功", r.status_code == 201 and d["visible"] is True, d)
 
     r = client.post(API, json={"content": "再发一条"})
-    row("一分钟内连发被限流", r.status_code == 429, r.json())
+    row("20 秒内连发被限流", r.status_code == 429, r.json())
 
     bypass_rate_limit()
 
@@ -128,6 +128,56 @@ try:
 
     r = client.get(API, params={"all": "1"}, headers=ADMIN)
     row("删完确实少一条", len(r.json()["messages"]) == 1, len(r.json()["messages"]))
+
+    # ---------- 聊天接口的防护 ----------
+    # 这个接口每次调用都在烧 DeepSeek 余额，之前完全没有限制。
+    # 这里用假 key + 打不通的地址，保证测试不会真的去调 DeepSeek 花钱。
+    out.append("")
+    out.append("-- 聊天接口防护 --")
+
+    CHAT = "/api/chat"
+    GOOD = {"Origin": "https://zqe.ccwu.cc"}
+    BODY = {"messages": [{"role": "user", "content": "你好"}]}
+
+    server.DEEPSEEK_API_KEY = "test-key-not-real"
+    server.DEEPSEEK_BASE_URL = "http://127.0.0.1:1"   # 必然连不上
+    server._chat_table_ready = False
+
+    def chat_post(headers=None):
+        return client.post(CHAT, json=BODY, headers=headers or {})
+
+    r = chat_post({"Origin": "https://someone-else.example.com"})
+    row("别的来源被拦 403", r.status_code == 403 and r.json().get("error") == "forbidden_origin", r.json())
+
+    r = chat_post()   # 不带任何来源头，等价于 curl
+    row("不带来源头被拦 403（等价 curl）", r.status_code == 403, r.status_code)
+
+    r = chat_post({"Referer": "https://zqe.ccwu.cc/index.html"})
+    row("只有 Referer 时放行（走到上游）", r.status_code == 200, r.status_code)
+
+    r = chat_post(GOOD)
+    row("紧接着再问被限流 429", r.status_code == 429 and r.json().get("error") == "chat_too_fast", r.json())
+
+    def set_limit(bucket, count):
+        conn = sqlite3.connect(server.MSG_DB_PATH)
+        conn.execute(
+            "INSERT INTO chat_limits (bucket, day, count, last_at) VALUES (?, ?, ?, 0) "
+            "ON CONFLICT(bucket, day) DO UPDATE SET count = excluded.count",
+            (bucket, server.chat_day(), count),
+        )
+        conn.commit()
+        conn.close()
+
+    set_limit(server.hash_ip_chat("testclient"), server.CHAT_DAILY_PER_IP)
+    r = chat_post(GOOD)
+    row("个人日上限触发 429", r.status_code == 429 and r.json().get("error") == "chat_daily_limit", r.json())
+
+    set_limit(server.CHAT_GLOBAL_BUCKET, server.CHAT_DAILY_GLOBAL)
+    r = chat_post(GOOD)
+    row("全站日上限触发 429", r.status_code == 429 and r.json().get("error") == "chat_global_limit", r.json())
+
+    r = chat_post({"Origin": "https://someone-else.example.com"})
+    row("坏来源优先于限流被拦（顺序正确）", r.status_code == 403, r.status_code)
 
     shutil.rmtree(tmpdir, ignore_errors=True)
     out.append(f"  （临时库已清理：{tmpdir}）")

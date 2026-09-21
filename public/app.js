@@ -156,9 +156,10 @@ async function initCloud() {
     modelName = data.model || "deepseek";
     setStatus("online", "已接入 " + modelName);
   } catch (err) {
-    console.warn("[local] 后端探活失败，可能是 server.py 没起", err);
+    console.warn("[local] 后端探活失败", err);
     backendReady = false;
-    setStatus("offline", "离线知识库模式（server.py 未运行）");
+    // 这是访客能看到的文案，别把 server.py、key 这类实现细节写进去
+    setStatus("offline", "离线知识库模式（AI 暂时连不上）");
   }
 }
 
@@ -168,6 +169,11 @@ function errorText(err) {
   // 两处来源的字段名不同：浏览器 fetch 抛异常用 code，后端转发层用 error，都认
   if (err.code === "network" || err.error === "network")
     return "网络错误：" + (err.message || "");
+  // 限流：后端的文案是给访客看的（"问得太快了，等 3 秒再问"），直接透传
+  if (typeof err.error === "string" && err.error.startsWith("chat_"))
+    return err.message || "问得有点快，歇一会儿再问";
+  if (err.error === "forbidden_origin")
+    return "这个页面没有调用权限，请回到主页再试";
   if (err.error && err.error.startsWith("upstream_"))
     return "DeepSeek 返回错误（" + err.error + "）";
   return "调用失败：" + (err.message || "未知错误");
@@ -216,7 +222,15 @@ async function askLLM(question) {
     });
 
     if (!resp.ok) {
+      // 后端出错时返回的是 JSON（{ error, message }）。尽量把它的文案读出来，
+      // 否则访客只看到一句 "HTTP 429"，不知道其实是"问得太快了"。
       failed = { error: "http_" + resp.status, message: `HTTP ${resp.status}` };
+      try {
+        const info = await resp.json();
+        if (info && info.error) failed = info;
+      } catch (err) {
+        /* 响应不是 JSON，就保留上面那句兜底 */
+      }
     } else if (!resp.body) {
       failed = { message: "响应没有流式 body" };
     } else {

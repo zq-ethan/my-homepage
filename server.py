@@ -7,10 +7,13 @@
 import os
 import hmac
 import json
+import math
+import time
 import hashlib
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -32,12 +35,34 @@ DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 PORT = int(os.getenv("PORT", "5000"))
 
-# ---------- 对话上下文限制 ----------
-# 和 functions/api/chat.js 的 MAX_TURNS / MAX_CHARS 必须一致，否则线上线下表现不同。
+# ---------- 对话上下文与花费上限 ----------
+# 和 functions/api/chat.js 的 MAX_TURNS / MAX_CHARS / MAX_TOKENS 必须一致，
+# 否则线上线下表现不同。
 # 20 条 ≈ 10 轮问答：访客一般问 3~8 个问题就走，10 轮足够覆盖；
 # 更长除了让模型更"记得住"，边际收益递减，而输入 token 成本会线性上涨。
 MAX_CHAT_TURNS = 20      # 最多带多少条消息
-MAX_CHAT_CHARS = 2000    # 单条消息最大长度，防有人塞超长内容烧 token
+MAX_CHAT_CHARS = 800     # 单条消息最大长度（前端输入框只给 500，留点余量）
+MAX_CHAT_TOKENS = 1000   # 单次回答的输出上限，把"一次请求最多花多少钱"钉死
+
+# ---------- 聊天接口防刷（和 chat.js 保持一致） ----------
+# 这个接口每次调用都在烧 DeepSeek 余额。之前完全没有防护，谁都能循环刷。
+CHAT_MIN_INTERVAL_SECONDS = 3   # 同一个人两次提问的最小间隔
+CHAT_DAILY_PER_IP = 60          # 同一个人 24 小时内最多问几次
+CHAT_DAILY_GLOBAL = 300         # 全站每日总次数上限（最后一道保险）
+
+# 允许调用 /api/chat 的来源（完整的 scheme + host，不带结尾斜杠）。
+# 浏览器发起同源 POST 一定会带 Origin 头，正常访客不受影响；
+# 命令行脚本默认不带 → 被挡掉。换域名时用环境变量 ALLOWED_ORIGINS 覆盖即可，不用改代码。
+DEFAULT_ALLOWED_ORIGINS = {
+    "https://zqe.ccwu.cc",
+    "https://my-homepage-2hg.pages.dev",
+}
+_configured_origins = {
+    s.strip().rstrip("/").lower()
+    for s in (os.getenv("ALLOWED_ORIGINS") or "").split(",")
+    if s.strip()
+}
+ALLOWED_ORIGINS = _configured_origins or DEFAULT_ALLOWED_ORIGINS
 
 # ---------- 留言板配置 ----------
 # 线上这些变量在 Cloudflare 后台配（ADMIN_TOKEN 类型选 Secret）。
@@ -108,6 +133,13 @@ async def chat(req: Request):
 
     和 functions/api/chat.js 是同一套逻辑的两份实现，限制值必须一致。
     """
+    # 第 0 关：来源白名单。最便宜，放最前面。
+    if not is_allowed_origin(req):
+        return JSONResponse(
+            {"error": "forbidden_origin", "message": "这个来源不被允许调用"},
+            status_code=403,
+        )
+
     if not DEEPSEEK_API_KEY:
         return JSONResponse(
             {"error": "server_missing_key", "message": "服务器未配置 DEEPSEEK_API_KEY，请填 .env"},
@@ -140,6 +172,22 @@ async def chat(req: Request):
             {"error": "bad_request", "message": "messages 为空"}, status_code=400
         )
 
+    # 第 1 关：限流。
+    # 放在参数校验之后：无效请求本来就不会去调 DeepSeek（不花钱），不该扣额度，
+    # 否则访客手滑发一条空消息就要白等 3 秒。要保护的只有下面那次上游调用。
+    limit_conn = message_db()
+    try:
+        allowed, limit_code, limit_msg = check_chat_limit(
+            limit_conn, hash_ip_chat(client_ip(req))
+        )
+    finally:
+        limit_conn.close()
+
+    if not allowed:
+        return JSONResponse(
+            {"error": limit_code, "message": limit_msg}, status_code=429
+        )
+
     # 人设永远排在第一条，前端传不进来也覆盖不掉
     full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
 
@@ -154,6 +202,8 @@ async def chat(req: Request):
                         "messages": full_messages,
                         "stream": True,
                         "temperature": 1,
+                        # 输出上限：不设的话单次成本不可控
+                        "max_tokens": MAX_CHAT_TOKENS,
                     },
                     headers={
                         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -203,7 +253,7 @@ async def chat(req: Request):
 
 MAX_NAME = 20           # 昵称最长字符数
 MAX_CONTENT = 500       # 正文最长字符数
-RATE_WINDOW_SECONDS = 60   # 同一个人两次留言的最小间隔
+RATE_WINDOW_SECONDS = 20   # 同一个人两次留言的最小间隔（20 秒）
 RATE_DAILY_LIMIT = 10   # 24 小时内最多发几条
 PUBLIC_PAGE_SIZE = 50   # 公开列表一次返回几条
 ADMIN_PAGE_SIZE = 500   # 管理页一次返回几条
@@ -224,6 +274,21 @@ CREATE INDEX IF NOT EXISTS idx_messages_ip     ON messages(ip_hash, created_at);
 
 # 建表只做一次。SQLite 的 CREATE TABLE IF NOT EXISTS 本身幂等，但每次请求都跑一遍没必要。
 _message_table_ready = False
+
+# 聊天限流的计数表。和 messages 放同一个库里 —— 本地就一个 sqlite 文件，没必要拆。
+# 字段含义：bucket = 谁（IP 哈希，或 __global__ 这个虚拟桶），
+#          day = 哪一天（UTC），count = 当天次数，last_at = 最后一次的毫秒时间戳。
+CREATE_CHAT_LIMITS_SQL = """
+CREATE TABLE IF NOT EXISTS chat_limits (
+  bucket  TEXT    NOT NULL,
+  day     TEXT    NOT NULL,
+  count   INTEGER NOT NULL DEFAULT 0,
+  last_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bucket, day)
+);
+"""
+CHAT_GLOBAL_BUCKET = "__global__"
+_chat_table_ready = False
 
 
 def message_db() -> sqlite3.Connection:
@@ -275,6 +340,113 @@ def client_ip(request: Request) -> str:
     )
 
 
+def hash_ip_chat(ip: str) -> str:
+    """聊天限流用的 IP 哈希。
+
+    盐和留言板那份刻意不同：聊天记录和留言记录本来没必要能互相关联起来。
+    """
+    return hashlib.sha256(("zqe-chat-salt::" + ip).encode("utf-8")).hexdigest()
+
+
+def is_allowed_origin(request: Request) -> bool:
+    """请求来源是否可信 —— 和 chat.js 的 isAllowedOrigin 同一套规则。
+
+    浏览器发起同源 POST 一定会带 Origin 头，命令行脚本默认不带。
+    Origin 缺失时退回看 Referer（少数浏览器 / 隐私插件会省掉前者）；
+    两者都没有就拒绝。本地开发放行 localhost / 127.0.0.1，端口随意。
+    """
+    candidates = []
+
+    origin = (request.headers.get("origin") or "").strip()
+    if origin:
+        candidates.append(origin)
+
+    referer = (request.headers.get("referer") or "").strip()
+    if referer:
+        parsed = urlparse(referer)
+        if parsed.scheme and parsed.netloc:
+            candidates.append(f"{parsed.scheme}://{parsed.netloc}")
+
+    for cand in candidates:
+        if cand.rstrip("/").lower() in ALLOWED_ORIGINS:
+            return True
+        if (urlparse(cand).hostname or "") in ("localhost", "127.0.0.1"):
+            return True
+
+    return False
+
+
+def chat_day() -> str:
+    """限流口径里的"今天"。
+
+    按 UTC 切分，和 chat.js 的 new Date().toISOString().slice(0, 10) 对齐 ——
+    两边日期口径不一致的话，跨零点前后会出现"线上说超了、本地说没超"。
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def ensure_chat_table(conn: sqlite3.Connection) -> None:
+    """懒建表，和留言表一个套路。"""
+    global _chat_table_ready
+    if _chat_table_ready:
+        return
+    conn.executescript(CREATE_CHAT_LIMITS_SQL)
+    conn.commit()
+    _chat_table_ready = True
+
+
+def check_chat_limit(conn: sqlite3.Connection, ip_hash: str) -> tuple:
+    """聊天限流。返回 (是否放行, 错误码, 提示文案)。
+
+    顺序：全站日上限 → 个人日上限 → 最小间隔。三条都过了才计数。
+
+    这里不做内存兜底（chat.js 那边有）：本地只有一个进程，
+    sqlite 出问题就是真出问题了，把它报出来比悄悄放行要好。
+    """
+    ensure_chat_table(conn)
+
+    now_ms = int(time.time() * 1000)
+    day = chat_day()
+
+    rows = conn.execute(
+        "SELECT bucket, count, last_at FROM chat_limits WHERE day = ? AND bucket IN (?, ?)",
+        (day, CHAT_GLOBAL_BUCKET, ip_hash),
+    ).fetchall()
+
+    global_count = 0
+    ip_count = 0
+    ip_last_at = 0
+    for r in rows:
+        if r["bucket"] == CHAT_GLOBAL_BUCKET:
+            global_count = r["count"]
+        else:
+            ip_count = r["count"]
+            ip_last_at = r["last_at"]
+
+    if global_count >= CHAT_DAILY_GLOBAL:
+        return False, "chat_global_limit", "今天来问的人有点多，明天再来吧"
+
+    if ip_count >= CHAT_DAILY_PER_IP:
+        return False, "chat_daily_limit", "今天问得有点多了，明天再来吧"
+
+    wait_ms = CHAT_MIN_INTERVAL_SECONDS * 1000 - (now_ms - ip_last_at)
+    if ip_last_at > 0 and wait_ms > 0:
+        return False, "chat_too_fast", f"问得太快了，等 {math.ceil(wait_ms / 1000)} 秒再问"
+
+    # 两条一起写。UPSERT：没有这行就插入 count=1，有就把 count 加一。
+    for bucket in (CHAT_GLOBAL_BUCKET, ip_hash):
+        conn.execute(
+            """INSERT INTO chat_limits (bucket, day, count, last_at)
+               VALUES (?, ?, 1, ?)
+               ON CONFLICT(bucket, day) DO UPDATE
+                 SET count = count + 1, last_at = excluded.last_at""",
+            (bucket, day, now_ms),
+        )
+    conn.commit()
+
+    return True, "", ""
+
+
 def is_admin(request: Request) -> bool:
     """管理口令校验。没配 ADMIN_TOKEN 一律拒绝 —— 不能因为"忘了配"就变成谁都能删。"""
     if not ADMIN_TOKEN:
@@ -316,7 +488,7 @@ def row_to_message(row: sqlite3.Row) -> dict:
 
 
 def check_rate_limit(conn: sqlite3.Connection, ip_hash: str) -> tuple:
-    """两层限制：60 秒内不能发第二条，24 小时内最多 10 条。
+    """两层限制：20 秒内不能发第二条，24 小时内最多 10 条。
 
     直接用 ISO 时间字符串比大小 —— ISO 8601 的字典序就是时间序，不用存时间戳。
     """
@@ -332,7 +504,7 @@ def check_rate_limit(conn: sqlite3.Connection, ip_hash: str) -> tuple:
         (ip_hash, iso(timedelta(seconds=RATE_WINDOW_SECONDS))),
     ).fetchone()["n"]
     if recent > 0:
-        return False, "刚发过了，等一分钟再发第二条"
+        return False, "刚发过了，等 20 秒再发第二条"
 
     daily = conn.execute(
         "SELECT COUNT(*) AS n FROM messages WHERE ip_hash = ? AND created_at > ?",
