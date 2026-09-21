@@ -17,6 +17,10 @@ venv/
 tools/_report*
 tools/_pwlog*.txt
 
+# playwright-cli 的会话快照与临时截图（做浏览器验证时生成）
+tools/.playwright-cli/
+.playwright-cli/
+
 # 留言板本地数据库（线上存 Cloudflare D1，这个只是本地开发用）
 messages.db
 messages.db-journal

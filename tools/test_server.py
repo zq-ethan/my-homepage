@@ -33,7 +33,12 @@ try:
         "/styles.css",
         "/app.js",
         "/messages.js",
+        "/theme.js",
         "/admin.html",
+        "/avatar.jpg",
+        "/og-cover.jpg",
+        "/favicon.svg",
+        "/apple-touch-icon.png",
         "/api/health",
         "/api/messages",
     ]:

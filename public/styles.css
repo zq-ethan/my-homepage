@@ -1,16 +1,193 @@
-/* ===== 基础变量：白底 + 柔和灰蓝 ===== */
+/* ============================================================
+   配色变量
+   ------------------------------------------------------------
+   整套颜色只在这个文件里定义，下面的规则一律用 var(--xxx)，不写死色值 ——
+   换主题就是换这一组变量的值，别的代码一行都不用动。
+
+   两套配色：
+     浅色 = :root 默认值
+     深色 = "星云紫"（近黑紫底 + 紫色强调），由 <html data-theme="dark"> 触发
+   深色那份变量写了两遍，一处给 <html data-theme="dark">，
+   另一处给 @media (prefers-color-scheme: dark) —— 后者是 JS 没加载时的兜底。
+   ⚠️ 这两份必须保持一致，改一份就同步另一份。
+   ============================================================ */
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
+  /* ---- 底色 / 文字 ---- */
+  --bg: #f6f7f9;              /* 页面背景 */
+  --surface: #ffffff;         /* 卡片、面板 */
+  --surface-2: #fcfcfd;       /* 面板里的次级区域：聊天记录底、留言条目 */
+  --input-bg: #ffffff;        /* 输入框、文本域 */
   --text: #1b1d21;
   --text-dim: #6b7280;
   --text-faint: #9aa1ab;
-  --line: #e9ebef;
-  --accent: #4f7cff;
-  --accent-soft: #eef2ff;
+  --line: #e9ebef;            /* 分割线、普通边框 */
+
+  /* ---- 强调色（浅色下是蓝，深色下换成紫） ---- */
+  --accent: #4f7cff;          /* 链接、聚焦、图标这类小面积用色 */
+  --accent-solid: #4f7cff;    /* 实心按钮底色，上面压白字 */
+  --accent-soft: #eef2ff;     /* 强调色的浅底 */
+  --accent-soft-hover: #dde5ff;
+  --accent-line: #e0e7ff;     /* 强调色的浅边框 */
+  --accent-line-hover: #c5d0ff;
+  --accent-text: #43506e;     /* 压在浅色底上的正文，带一点蓝调 */
+  --focus-border: #b9c9ff;
+  --focus-ring: rgba(79, 124, 255, 0.1);
+
+  /* ---- 有独立底色的块 ---- */
+  --card-accent-bg: linear-gradient(160deg, #f7f9ff 0%, #ffffff 70%);
+  --avatar-bg: linear-gradient(135deg, #dbe4ff 0%, #eef2ff 50%, #f3f0ff 100%);
+  --avatar-text: #4b5a80;
+  --chat-line: #e0e7ff;       /* 聊天框的边框，比普通分割线显眼一点 */
+  --chat-shadow: 0 2px 12px rgba(79, 124, 255, 0.08);
+  --bot-bg: #f1f3f7;          /* 机器人气泡 */
+  --typing-dot: #aab2c0;
+  --stop-bg: #8a93a6;         /* 生成中那枚"停止"按钮 */
+  --ghost-bg: #ffffff;        /* 描边按钮（白底 + 灰边） */
+  --ghost-bg-hover: #f7f8fa;
+
+  /* ---- 语义色：成功 / 提示 / 警告 ---- */
+  --ok-text: #2f9e63;
+  --ok-bg: #f2fbf6;
+  --ok-line: #cdeedb;
+  --warn-text: #b4791f;
+  --warn-bg: #fdf8ee;
+  --warn-line: #f0e2c4;
+  --warn-bg-strong: #fff4e5;  /* 比 warn-bg 更显眼的徽标底 */
+  --warn-line-strong: #ffe0b8;
+  --danger-text: #c0561a;
+  --danger-bg: #fdf3ec;
+  --danger-line: #f0d5c4;
+  --notice-text: #9a6b12;     /* 聊天区顶部那条降级提示 */
+  --notice-bg: #fdf6e7;
+  --notice-line: #f2e4c4;
+  --private-bg: #fffdf7;      /* 管理页里"悄悄话"条目的底 */
+
+  /* ---- 尺寸 / 阴影 ---- */
   --radius: 16px;
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
   --shadow-md: 0 4px 20px rgba(16, 24, 40, 0.06);
+
+  /* 告诉浏览器现在是浅色：滚动条、输入框、自动填充等原生控件会自动配套。
+     不加这行，深色页面里会拖出一根惨白的滚动条。 */
+  color-scheme: light;
+}
+
+/* ===== 深色"星云紫" =====
+   近黑紫底 + 紫色强调。底色不用纯黑（#000），而是带一点紫的 #0d0a14 ——
+   纯黑配紫会显得脏，加一点蓝紫底色整个画面才"透"。
+
+   紫色为什么不用同一个值：--accent 是压在深底上的文字/线条，要亮（#a78bfa）才看得清；
+   --accent-solid 是按钮底色、上面要压白字，得深一点（#7c3aed）对比度才够。 */
+:root[data-theme="dark"] {
+  --bg: #0d0a14;
+  --surface: #17131f;
+  --surface-2: #1c1727;
+  --input-bg: #1b1626;
+  --text: #ece9f5;
+  --text-dim: #a9a2bd;
+  --text-faint: #7a7290;
+  --line: #2a2338;
+
+  --accent: #a78bfa;
+  --accent-solid: #7c3aed;
+  --accent-soft: #241d3a;
+  --accent-soft-hover: #2c2347;
+  --accent-line: #3a3060;
+  --accent-line-hover: #4d3f80;
+  --accent-text: #cfc6e8;
+  --focus-border: #7c5ce0;
+  --focus-ring: rgba(139, 92, 246, 0.25);
+
+  --card-accent-bg: linear-gradient(160deg, #1e1833 0%, #17131f 70%);
+  --avatar-bg: linear-gradient(135deg, #2a2144 0%, #241d3a 50%, #2d2350 100%);
+  --avatar-text: #c4b5fd;
+  --chat-line: #342a52;
+  --chat-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+  --bot-bg: #241d3a;
+  --typing-dot: #6d6688;
+  --stop-bg: #4a4458;
+  --ghost-bg: #1c1727;
+  --ghost-bg-hover: #241d3a;
+
+  --ok-text: #5fd39a;
+  --ok-bg: #12241c;
+  --ok-line: #234432;
+  --warn-text: #e0b25c;
+  --warn-bg: #2a2214;
+  --warn-line: #453718;
+  --warn-bg-strong: #2a2214;
+  --warn-line-strong: #453718;
+  --danger-text: #f0907a;
+  --danger-bg: #2a1a16;
+  --danger-line: #4a2e26;
+  --notice-text: #e0b25c;
+  --notice-bg: #2a2214;
+  --notice-line: #453718;
+  --private-bg: #241d18;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
+
+/* JS 没跑起来时的兜底：跟随系统。
+   :not([data-theme="light"]) 是为了尊重用户在按钮上手动选的浅色 ——
+   否则"系统深色 + 用户选浅色"会被这条规则拽回深色。
+   ⚠️ 变量值和上面 :root[data-theme="dark"] 完全一致，改一份务必同步另一份。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d0a14;
+    --surface: #17131f;
+    --surface-2: #1c1727;
+    --input-bg: #1b1626;
+    --text: #ece9f5;
+    --text-dim: #a9a2bd;
+    --text-faint: #7a7290;
+    --line: #2a2338;
+
+    --accent: #a78bfa;
+    --accent-solid: #7c3aed;
+    --accent-soft: #241d3a;
+    --accent-soft-hover: #2c2347;
+    --accent-line: #3a3060;
+    --accent-line-hover: #4d3f80;
+    --accent-text: #cfc6e8;
+    --focus-border: #7c5ce0;
+    --focus-ring: rgba(139, 92, 246, 0.25);
+
+    --card-accent-bg: linear-gradient(160deg, #1e1833 0%, #17131f 70%);
+    --avatar-bg: linear-gradient(135deg, #2a2144 0%, #241d3a 50%, #2d2350 100%);
+    --avatar-text: #c4b5fd;
+    --chat-line: #342a52;
+    --chat-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+    --bot-bg: #241d3a;
+    --typing-dot: #6d6688;
+    --stop-bg: #4a4458;
+    --ghost-bg: #1c1727;
+    --ghost-bg-hover: #241d3a;
+
+    --ok-text: #5fd39a;
+    --ok-bg: #12241c;
+    --ok-line: #234432;
+    --warn-text: #e0b25c;
+    --warn-bg: #2a2214;
+    --warn-line: #453718;
+    --warn-bg-strong: #2a2214;
+    --warn-line-strong: #453718;
+    --danger-text: #f0907a;
+    --danger-bg: #2a1a16;
+    --danger-line: #4a2e26;
+    --notice-text: #e0b25c;
+    --notice-bg: #2a2214;
+    --notice-line: #453718;
+    --private-bg: #241d18;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -27,6 +204,58 @@ body {
     "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 切主题时颜色平滑过渡 0.2 秒，不要"啪"地跳变。
+   首屏不会看到这段动画：theme.js 在样式表之前就把 data-theme 定好了，
+   浏览器第一次绘制拿到的已经是最终配色。
+   这里顺手把 transform / box-shadow 也带上，是为了让下面 .card 自己的过渡
+   被覆盖掉之后，hover 抬升的手感不变（0.15s → 0.2s，看不出差别）。 */
+body,
+.card,
+.chat,
+.chat-log,
+.msg-form,
+.msg-list,
+.msg-item,
+.status,
+.q-chip,
+.msg-pager button,
+.contact-chip,
+.chat-input input,
+.msg-form-row input[type="text"],
+.msg-form textarea,
+.theme-toggle {
+  transition: background-color 0.2s ease, border-color 0.2s ease,
+    color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* 系统开了「减少动态效果」就把这段也关掉 */
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .card,
+  .chat,
+  .chat-log,
+  .msg-form,
+  .msg-list,
+  .msg-item,
+  .status,
+  .q-chip,
+  .msg-pager button,
+  .contact-chip,
+  .chat-input input,
+  .msg-form-row input[type="text"],
+  .msg-form textarea,
+  .theme-toggle {
+    transition: none;
+  }
+}
+
+/* 输入框里的占位提示。浏览器默认各写各的（Firefox 还是半透明的），
+   统一成一个灰，深浅两套配色下都看得清。 */
+::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
 }
 
 .page {
@@ -81,7 +310,7 @@ body {
   height: 84px;
   margin: 0 auto 16px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #dbe4ff 0%, #eef2ff 50%, #f3f0ff 100%);
+  background: var(--avatar-bg);
   border: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -100,7 +329,7 @@ body {
 .avatar-text {
   font-size: 32px;
   font-weight: 600;
-  color: #4b5a80;
+  color: var(--avatar-text);
   letter-spacing: 2px;
 }
 
@@ -154,9 +383,9 @@ body {
   display: inline-block;
   padding: 3px 11px;
   font-size: 12px;
-  color: #43506e;
+  color: var(--accent-text);
   background: var(--accent-soft);
-  border: 1px solid #e0e7ff;
+  border: 1px solid var(--accent-line);
   border-radius: 999px;
 }
 
@@ -193,7 +422,7 @@ body {
   border-radius: 999px;
   border: 1px solid var(--line);
   color: var(--text-dim);
-  background: #fff;
+  background: var(--surface);
 }
 
 .status::before {
@@ -205,15 +434,15 @@ body {
 }
 
 .status-online {
-  color: #2f9e63;
-  border-color: #cdeedb;
-  background: #f2fbf6;
+  color: var(--ok-text);
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
 }
 
 .status-offline {
-  color: #b4791f;
-  border-color: #f0e2c4;
-  background: #fdf8ee;
+  color: var(--warn-text);
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
 }
 
 .status-loading {
@@ -242,8 +471,8 @@ body {
 }
 
 .card-accent {
-  background: linear-gradient(160deg, #f7f9ff 0%, #ffffff 70%);
-  border-color: #e0e7ff;
+  background: var(--card-accent-bg);
+  border-color: var(--accent-line);
 }
 
 .card-label {
@@ -268,9 +497,9 @@ body {
 /* ===== 聊天区 ===== */
 .chat {
   background: var(--surface);
-  border: 1px solid #e0e7ff;
+  border: 1px solid var(--chat-line);
   border-radius: var(--radius);
-  box-shadow: 0 2px 12px rgba(79, 124, 255, 0.08);
+  box-shadow: var(--chat-shadow);
   overflow: hidden;
 }
 
@@ -281,7 +510,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #fcfcfd;
+  background: var(--surface-2);
   scroll-behavior: smooth;
 }
 
@@ -303,14 +532,14 @@ body {
 
 .msg-bot {
   align-self: flex-start;
-  background: #f1f3f7;
+  background: var(--bot-bg);
   color: var(--text);
   border-bottom-left-radius: 4px;
 }
 
 .msg-user {
   align-self: flex-end;
-  background: var(--accent);
+  background: var(--accent-solid);
   color: #fff;
   border-bottom-right-radius: 4px;
 }
@@ -322,9 +551,9 @@ body {
   padding: 6px 12px;
   font-size: 12px;
   line-height: 1.6;
-  color: #9a6b12;
-  background: #fdf6e7;
-  border: 1px solid #f2e4c4;
+  color: var(--notice-text);
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-line);
   border-radius: 10px;
   white-space: pre-wrap;
 }
@@ -335,7 +564,7 @@ body {
   height: 6px;
   margin: 0 2px;
   border-radius: 50%;
-  background: #aab2c0;
+  background: var(--typing-dot);
   animation: blink 1.2s infinite ease-in-out;
 }
 
@@ -360,8 +589,8 @@ body {
   padding: 6px 12px;
   font-size: 13px;
   font-family: inherit;
-  color: #43506e;
-  background: #fff;
+  color: var(--accent-text);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 999px;
   cursor: pointer;
@@ -370,7 +599,7 @@ body {
 
 .q-chip:hover {
   background: var(--accent-soft);
-  border-color: #d7e0ff;
+  border-color: var(--accent-line-hover);
 }
 
 /* 输入区 */
@@ -387,7 +616,7 @@ body {
   font-size: 14.5px;
   font-family: inherit;
   color: var(--text);
-  background: #fff;
+  background: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: 10px;
   outline: none;
@@ -395,8 +624,8 @@ body {
 }
 
 .chat-input input:focus {
-  border-color: #b9c9ff;
-  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .chat-input button {
@@ -405,7 +634,7 @@ body {
   font-family: inherit;
   font-weight: 500;
   color: #fff;
-  background: var(--accent);
+  background: var(--accent-solid);
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -414,7 +643,7 @@ body {
 
 .chat-input button:hover { opacity: 0.9; }
 .chat-input button:disabled { opacity: 0.5; cursor: default; }
-.chat-input button.is-stop { background: #8a93a6; }
+.chat-input button.is-stop { background: var(--stop-bg); }
 
 /* ===== 留言板 ===== */
 .section-messages {
@@ -452,7 +681,7 @@ body {
   font-size: 14px;
   font-family: inherit;
   color: var(--text);
-  background: #fff;
+  background: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: 10px;
   outline: none;
@@ -460,8 +689,8 @@ body {
 }
 
 .msg-form-row input[type="text"]:focus {
-  border-color: #b9c9ff;
-  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 /* 悄悄话开关：勾上就只有本人能在管理页看到 */
@@ -494,7 +723,7 @@ body {
   font-family: inherit;
   line-height: 1.65;
   color: var(--text);
-  background: #fff;
+  background: var(--input-bg);
   border: 1px solid var(--line);
   border-radius: 10px;
   outline: none;
@@ -503,8 +732,8 @@ body {
 }
 
 .msg-form textarea:focus {
-  border-color: #b9c9ff;
-  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .msg-turnstile {
@@ -524,7 +753,7 @@ body {
 }
 
 .msg-counter.is-full {
-  color: #b4791f;
+  color: var(--warn-text);
 }
 
 .msg-form-foot button {
@@ -534,7 +763,7 @@ body {
   font-family: inherit;
   font-weight: 500;
   color: #fff;
-  background: var(--accent);
+  background: var(--accent-solid);
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -551,8 +780,8 @@ body {
 }
 
 .msg-hint:empty { display: none; }
-.msg-hint-ok { color: #2f9e63; }
-.msg-hint-error { color: #c0561a; }
+.msg-hint-ok { color: var(--ok-text); }
+.msg-hint-error { color: var(--danger-text); }
 
 /* ---- 留言列表 ---- */
 .msg-list {
@@ -570,7 +799,7 @@ body {
 
 .msg-item {
   padding: 12px 14px;
-  background: #fcfcfd;
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 12px;
 }
@@ -585,7 +814,7 @@ body {
 .msg-item-name {
   font-size: 13.5px;
   font-weight: 600;
-  color: #43506e;
+  color: var(--accent-text);
 }
 
 .msg-item-time {
@@ -648,7 +877,7 @@ body {
 .msg-pager button:hover:not(:disabled) {
   color: var(--accent);
   background: var(--accent-soft);
-  border-color: #c5d0ff;
+  border-color: var(--accent-line-hover);
 }
 
 .msg-pager button:disabled {
@@ -679,15 +908,15 @@ body {
   font-size: 14px;
   color: var(--accent);
   background: var(--accent-soft);
-  border: 1px solid #d7e0ff;
+  border: 1px solid var(--accent-line);
   border-radius: 10px;
   text-decoration: none;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .contact-chip:hover {
-  background: #dde5ff;
-  border-color: #c5d0ff;
+  background: var(--accent-soft-hover);
+  border-color: var(--accent-line-hover);
 }
 
 /* ===== 页脚 ===== */
@@ -753,4 +982,56 @@ body {
   .msg-board { grid-template-columns: 1fr; gap: 12px; }
   .msg-list { max-height: none; }
   .msg-form { padding: 14px; }
+}
+
+/* ===== 主题切换按钮 =====
+   钉在右上角，滚动到哪都能点。图标和文案由 theme.js 按当前档位填写
+   （🌗 跟随系统 / 🌙 深色 / ☀️ 浅色），这里只管长什么样。 */
+.theme-toggle {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 50;              /* 压在页面上层，不被卡片盖住 */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+/* 键盘 Tab 过来时才显示聚焦圈 —— 鼠标点击不显示，免得难看 */
+.theme-toggle:focus-visible {
+  outline: none;
+  border-color: var(--focus-border);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.theme-toggle-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* 窄屏只留图标，把右上角让出来 */
+@media (max-width: 560px) {
+  .theme-toggle {
+    top: 12px;
+    right: 12px;
+    gap: 0;
+    padding: 8px 9px;
+  }
+  .theme-toggle-label { display: none; }
 }

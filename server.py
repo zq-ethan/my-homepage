@@ -718,7 +718,18 @@ def delete_message(request: Request):
 # 不要改回 app.mount("/", StaticFiles(directory=BASE_DIR))：那样会把 .env（含 API key）、
 # server.py、persona.md、.git/ 一并暴露给浏览器，任何人都能直接下载。
 # 以后新增前端资源（比如把文字头像换成图片），记得把文件名补进 FRONTEND_FILES。
-FRONTEND_FILES = {"index.html", "styles.css", "app.js", "messages.js", "admin.html"}
+FRONTEND_FILES = {
+    "index.html",
+    "styles.css",
+    "app.js",
+    "messages.js",
+    "theme.js",
+    "admin.html",
+    "avatar.jpg",
+    "og-cover.jpg",
+    "favicon.svg",
+    "apple-touch-icon.png",
+}
 
 
 @app.get("/", include_in_schema=False)

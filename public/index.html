@@ -5,15 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>赵泉恩 · 个人主页</title>
   <meta name="description" content="赵泉恩的个人主页，附一个可以提问的数字分身。" />
+
+  <!-- 手机浏览器地址栏的颜色，由 theme.js 按当前主题改写 -->
+  <meta name="theme-color" id="themeColorMeta" content="#f6f7f9" />
+
+  <!-- 主题脚本必须放在样式表之前、同步执行：晚一步都会先按浅色画一帧再翻成深色，
+       打开瞬间就是"白光一闪" -->
+  <script src="theme.js"></script>
+
+  <!-- 图标：浏览器标签页用 SVG，加到手机桌面用 PNG -->
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+  <!-- 分享卡片。og:image 必须是完整 https 地址，爬虫不认相对路径 -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="赵泉恩" />
+  <meta property="og:locale" content="zh_CN" />
+  <meta property="og:title" content="赵泉恩 · 个人主页" />
+  <meta property="og:description" content="计算机科学与技术 · AI 全栈，附一个可以提问的数字分身。" />
+  <meta property="og:url" content="https://zqe.ccwu.cc/" />
+  <meta property="og:image" content="https://zqe.ccwu.cc/og-cover.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- 主题开关：跟随系统 → 深色 → 浅色 三档循环，选过就记住。
+       图标和文案由 theme.js 自己填，页面里不用写一行 JS -->
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换主题">
+    <span class="theme-toggle-icon" id="themeIcon">🌗</span>
+    <span class="theme-toggle-label" id="themeLabel">跟随系统</span>
+  </button>
+
   <div class="page">
 
     <!-- ===== 头部：头像 + 名字 + 一句话 ===== -->
     <header class="hero">
       <div class="avatar" id="avatar">
-        <span class="avatar-text">赵</span>
+        <img src="avatar.jpg" alt="赵泉恩" width="84" height="84" />
       </div>
 
       <h1 class="name">赵泉恩</h1>

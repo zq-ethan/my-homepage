@@ -6,6 +6,15 @@
   <title>留言管理 · 赵泉恩</title>
   <!-- 别让搜索引擎把管理页收进去 -->
   <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+
+  <!-- 手机浏览器地址栏的颜色，由 theme.js 按当前主题改写 -->
+  <meta name="theme-color" id="themeColorMeta" content="#f6f7f9" />
+
+  <!-- 和管理页无关，是给半夜来看留言的自己用的：
+       主题脚本要放在样式表之前同步执行，否则打开瞬间会闪一下白 -->
+  <script src="theme.js"></script>
+
   <link rel="stylesheet" href="styles.css" />
   <style>
     /* 管理页专属样式。放在页面内而不是 styles.css：
@@ -37,15 +46,15 @@
       font-size: 14.5px;
       font-family: inherit;
       color: var(--text);
-      background: #fff;
+      background: var(--input-bg);
       border: 1px solid var(--line);
       border-radius: 10px;
       outline: none;
     }
 
     .admin-gate input:focus {
-      border-color: #b9c9ff;
-      box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+      border-color: var(--focus-border);
+      box-shadow: 0 0 0 3px var(--focus-ring);
     }
 
     .admin-gate button,
@@ -81,8 +90,15 @@
 
     .admin-bar button.ghost {
       color: var(--text-dim);
-      background: #fff;
+      background: var(--ghost-bg);
       border: 1px solid var(--line);
+    }
+
+    /* 描边按钮默认是"白底灰边"，在深色下换成深底紫字，hover 才看得出反馈 */
+    .admin-bar button.ghost:hover {
+      color: var(--accent);
+      background: var(--ghost-bg-hover);
+      border-color: var(--accent-line);
     }
 
     .admin-item {
@@ -96,8 +112,8 @@
 
     /* 悄悄话单独标色，扫一眼就知道哪条是别人私下说的 */
     .admin-item.is-private {
-      background: #fffdf7;
-      border-color: #f0e2c4;
+      background: var(--private-bg);
+      border-color: var(--warn-line);
     }
 
     .admin-item-head {
@@ -108,15 +124,15 @@
       margin-bottom: 8px;
     }
 
-    .admin-item-name { font-size: 13.5px; font-weight: 600; color: #43506e; }
+    .admin-item-name { font-size: 13.5px; font-weight: 600; color: var(--accent-text); }
     .admin-item-meta { font-size: 12px; color: var(--text-faint); }
 
     .admin-badge {
       padding: 1px 8px;
       font-size: 11px;
-      color: #b4791f;
-      background: #fff4e5;
-      border: 1px solid #ffe0b8;
+      color: var(--warn-text);
+      background: var(--warn-bg-strong);
+      border: 1px solid var(--warn-line-strong);
       border-radius: 999px;
     }
 
@@ -137,15 +153,15 @@
       padding: 5px 12px;
       font-size: 12.5px;
       font-family: inherit;
-      color: #c0561a;
-      background: #fff;
-      border: 1px solid #f0d5c4;
+      color: var(--danger-text);
+      background: var(--ghost-bg);
+      border: 1px solid var(--danger-line);
       border-radius: 8px;
       cursor: pointer;
       transition: background 0.15s ease;
     }
 
-    .admin-del:hover { background: #fdf3ec; }
+    .admin-del:hover { background: var(--danger-bg); }
     .admin-del:disabled { opacity: 0.5; cursor: default; }
 
     .admin-msg {
@@ -154,11 +170,17 @@
       line-height: 1.6;
     }
 
-    .admin-msg.error { color: #c0561a; }
-    .admin-msg.ok { color: #2f9e63; }
+    .admin-msg.error { color: var(--danger-text); }
+    .admin-msg.ok { color: var(--ok-text); }
   </style>
 </head>
 <body>
+  <!-- 主题开关，和首页同一个（见 theme.js） -->
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换主题">
+    <span class="theme-toggle-icon" id="themeIcon">🌗</span>
+    <span class="theme-toggle-label" id="themeLabel">跟随系统</span>
+  </button>
+
   <div class="page admin-page">
     <h1 class="admin-title">留言管理</h1>
     <p class="admin-sub">

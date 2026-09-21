@@ -472,6 +472,80 @@ check(
   serverPy.includes('"messages.js"') && serverPy.includes('"admin.html"')
 );
 
+/* ---------- 5b-2. 主题（浅色 / 深色 / 跟随系统） ---------- */
+log("");
+log("== 5b-2. 主题与配色 ==");
+
+const themeJs = readFileSync(join(root, "public", "theme.js"), "utf8");
+
+check("theme.js 被首页引入", indexHtml.includes('src="theme.js"'));
+check("theme.js 被管理页引入（半夜看留言不刺眼）", adminHtml.includes('src="theme.js"'));
+/* ⚠️ theme.js 必须排在样式表之前。晚一步，浏览器就会先按浅色画一帧再翻成深色，
+   打开瞬间"白光一闪"。这条防的是以后有人把它挪到 </body> 前或加个 defer。 */
+const idxThemeJs = indexHtml.indexOf('src="theme.js"');
+const idxStyles = indexHtml.indexOf('href="styles.css"');
+check(
+  "首页 theme.js 排在 styles.css 之前",
+  idxThemeJs !== -1 && idxStyles !== -1 && idxThemeJs < idxStyles
+);
+check("首页有主题按钮", indexHtml.includes('id="themeToggle"'));
+check("管理页有主题按钮", adminHtml.includes('id="themeToggle"'));
+check(
+  "theme.js 会跟着系统偏好变",
+  themeJs.includes("prefers-color-scheme: dark") &&
+    themeJs.includes('.addEventListener("change"')
+);
+check("theme.js 把选择存进 localStorage", themeJs.includes("localStorage.setItem"));
+check("theme.js 不用 innerHTML（省得以后被人乱塞）", !/\binnerHTML\s*=/.test(themeJs));
+check("server.py 白名单含 theme.js", serverPy.includes('"theme.js"'));
+/* 手机地址栏颜色是 JS 写死的，必须和 CSS 的 --bg 一致，不然切主题时会露馅 */
+check(
+  "theme.js 的地址栏颜色与 --bg 一致",
+  themeJs.includes("#0d0a14") && themeJs.includes("#f6f7f9")
+);
+
+/* 深色配色要有两个入口：属性选择器管"用户手动选的"，
+   媒体查询管"JS 没跑起来时跟随系统"。少一个就会在某种情况下掉回浅色。 */
+check("styles.css 有 data-theme=dark 配色", /:root\[data-theme="dark"\]/.test(stylesCss));
+check(
+  "styles.css 有 prefers-color-scheme 兜底",
+  /@media \(prefers-color-scheme: dark\)/.test(stylesCss)
+);
+check(
+  "styles.css 声明了 color-scheme（滚动条等原生控件跟着变色）",
+  stylesCss.includes("color-scheme: dark")
+);
+
+/* 护栏：正文里不许再出现写死的颜色。
+   否则以后再加一种配色时，一定会漏掉某一块 —— 这次就是因为颜色散落在
+   60 多处，才需要一行行把硬编码抠成变量。
+   变量定义行和注释要先剥掉：注释里也写了色值，不剥会全部误报。 */
+const cssBody = stylesCss
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .split(/\r?\n/)
+  .filter((l) => !/^\s*--[\w-]+\s*:/.test(l))
+  .join("\n");
+const strayColors = (cssBody.match(/#[0-9a-fA-F]{3,8}\b/g) || []).filter(
+  (c) => c.toLowerCase() !== "#fff" // 紫底/蓝底按钮上的白字，两套配色通用
+);
+check(
+  "styles.css 正文没有写死的颜色（只留按钮上的白字）",
+  strayColors.length === 0,
+  strayColors.join(" ")
+);
+
+const adminStyleBody = adminHtml
+  .slice(adminHtml.indexOf("<style>"), adminHtml.indexOf("</style>"))
+  .replace(/\/\*[\s\S]*?\*\//g, "");
+const strayAdminColors = (adminStyleBody.match(/#[0-9a-fA-F]{3,8}\b/g) || []).filter(
+  (c) => c.toLowerCase() !== "#fff"
+);
+check(
+  "admin.html 内联样式也没有写死的颜色",
+  strayAdminColors.length === 0,
+  strayAdminColors.join(" ")
+);
+
 /* ---------- 5c. 回归防护：钉死踩过的坑 ---------- */
 log("");
 log("== 5c. 回归防护（踩过的坑） ==");
