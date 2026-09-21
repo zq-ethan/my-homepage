@@ -410,6 +410,23 @@ check(
   )
 );
 
+/* 2026-09-21：Turnstile 校验失败时只回一句笼统的"人机验证没通过"，
+   没法区分「secret 填错了」（那会导致所有留言都失败）和「token 本来就是假的」。
+   现在把 Cloudflare 的原始错误码记下来，且仅在 ?debug=1 时才带出。 */
+check(
+  "messages.js 记录 Turnstile 的原始错误码",
+  messagesSrc.includes("lastTurnstileError") &&
+    messagesSrc.includes("error-codes")
+);
+check(
+  "Turnstile 错误码只在 ?debug=1 时带出",
+  messagesSrc.includes("if (isDebug(request)) body.detail = lastTurnstileError")
+);
+check(
+  "messages.js 有统一的 isDebug 判断（不散落裸 new URL）",
+  /function isDebug\(request\)/.test(messagesSrc)
+);
+
 /* 对话上下文限制：前端 / chat.js / server.py 三处必须一致，否则线上线下表现不同 */
 const pick = (src, re) => {
   const m = src.match(re);

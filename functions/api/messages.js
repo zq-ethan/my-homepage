@@ -35,6 +35,13 @@ const ADMIN_PAGE_SIZE = 500;     // 管理页一次最多返回几条
    所以正常情况下一辈子只建一次表，不占每次请求的耗时。 */
 let tableReady = false;
 
+/* 上一次 Turnstile 校验失败的原始错误码（Cloudflare 的原话）。
+   只在校验失败时被写入，且仅在请求带 ?debug=1 时才吐给调用方。
+   存在的意义：把「secret 填错了」（invalid-input-secret）和
+   「token 本来就是假的」（invalid-input-response）区分开——
+   否则两种情况都只回一句"人机验证没通过"，没法排查。 */
+let lastTurnstileError = "";
+
 /* ============================================================
    三个出口
    ============================================================ */
@@ -129,14 +136,16 @@ async function handlePost({ request, env }) {
       ip
     );
     if (!passed) {
-      return jsonResponse(
-        {
-          ok: false,
-          error: "turnstile_failed",
-          message: "人机验证没通过，刷新页面再试一次",
-        },
-        403
-      );
+      const body = {
+        ok: false,
+        error: "turnstile_failed",
+        message: "人机验证没通过，刷新页面再试一次",
+      };
+      /* 加 ?debug=1 才带出 Cloudflare 的原始错误码。
+         invalid-input-secret → secret 填错了（全部留言都会失败）
+         invalid-input-response → secret 是好的，只是这次 token 无效 */
+      if (isDebug(request)) body.detail = lastTurnstileError || "unknown";
+      return jsonResponse(body, 403);
     }
   }
 
@@ -229,6 +238,16 @@ async function guard(ctx, fn) {
   }
 }
 
+/** 请求是否带了 ?debug=1。request 不合法时一律当没开。 */
+function isDebug(request) {
+  try {
+    return new URL(request.url).searchParams.get("debug") === "1";
+  } catch (e) {
+    /* request 不存在或 url 不合法，就当没开调试 */
+    return false;
+  }
+}
+
 /** 把异常转成 JSON。原始错误默认不吐给访客，加 ?debug=1 才带出来。 */
 function serverError(err, request) {
   const detail = String((err && err.message) || err).slice(0, 300);
@@ -240,13 +259,7 @@ function serverError(err, request) {
     message: "服务器内部错误，请稍后再试",
   };
 
-  try {
-    if (new URL(request.url).searchParams.get("debug") === "1") {
-      body.detail = detail;
-    }
-  } catch (e) {
-    /* request 不存在或 url 不合法，就不带 detail */
-  }
+  if (isDebug(request)) body.detail = detail;
 
   return jsonResponse(body, 500);
 }
@@ -376,7 +389,10 @@ export async function checkRateLimit(db, ipHash, now = Date.now()) {
  * secret 是服务端密钥（只在后台配，绝不进前端），token 是前端挂件塞进表单的那串一次性凭证。
  */
 export async function verifyTurnstile(secret, token, ip) {
-  if (!token || typeof token !== "string") return false;
+  if (!token || typeof token !== "string") {
+    lastTurnstileError = "missing-token";
+    return false;
+  }
 
   const form = new FormData();
   form.append("secret", secret);
@@ -389,9 +405,17 @@ export async function verifyTurnstile(secret, token, ip) {
       { method: "POST", body: form }
     );
     const data = await resp.json();
-    return data && data.success === true;
+    if (data && data.success === true) {
+      lastTurnstileError = "";
+      return true;
+    }
+    /* 记下 Cloudflare 的原话，配合 ?debug=1 排查用 */
+    const codes = (data && data["error-codes"]) || [];
+    lastTurnstileError = codes.length ? codes.join(",") : "no-error-code";
+    return false;
   } catch (err) {
     // 校验服务本身挂了 —— 宁可不让人发，也不能放机器人进来
+    lastTurnstileError = "network:" + String((err && err.message) || err);
     return false;
   }
 }
