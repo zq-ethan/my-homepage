@@ -743,6 +743,15 @@ if (headersRaw !== null) {
     syntaxBad
   );
 
+  // ⚠️ _headers 的注释是 #，不是 /* */ 或 //，所以 stripComments 用不上。
+  // 所有正则都必须打在"剥掉注释后的正文"上：本文档的注释里就写了
+  // /admin.html 为什么不写，若不剥注释，检查会被注释里的字面量骗成永远为真。
+  // （同类坑在 verify.mjs 已经踩过两次。）
+  const headersBody = headersRaw
+    .split(/\r?\n/)
+    .filter((l) => !l.trimStart().startsWith("#"))
+    .join("\n");
+
   // 关键护栏：这两个头一旦写进去，留言板 / 管理页会直接坏
   const csp = headersRaw.match(/content-security-policy:([^\n]*)/i);
   const cspSafe =
@@ -756,49 +765,55 @@ if (headersRaw !== null) {
   );
   check(
     "不写 COEP（require-corp 会拦掉跨域的 Turnstile iframe/脚本）",
-    !/cross-origin-embedder-policy/i.test(headersRaw)
+    !/cross-origin-embedder-policy/i.test(headersBody)
   );
   check(
     "不写 HSTS（应由 Cloudflare 边缘统一下发，写死在文件里难回滚）",
-    !/strict-transport-security/i.test(headersRaw)
+    !/strict-transport-security/i.test(headersBody)
   );
   check(
     "不放宽 CORS（不能出现 Access-Control-Allow-Origin）",
-    !/access-control-allow-origin/i.test(headersRaw)
+    !/access-control-allow-origin/i.test(headersBody)
   );
   check(
     "不放宽 COOP（不能出现 Cross-Origin-Opener-Policy: unsafe-none）",
-    !/cross-origin-opener-policy:\s*unsafe-none/i.test(headersRaw)
+    !/cross-origin-opener-policy:\s*unsafe-none/i.test(headersBody)
+  );
+
+  // ⚠️ 2026-09-21 线上实测踩到的坑：Pages 会把 /admin.html 用 308 规范化成 /admin，
+  // 精确路径规则匹配的是规范化后的路径，所以 /admin.html 那条永远不命中。
+  // 只用 splat（/*、/admin*）才有效。这条检查防止有人"顺手改得更好看"改回去。
+  check(
+    "管理页规则用 splat（/admin*），不用精确路径 /admin.html（永不命中）",
+    /^\/admin\*(?:\s|$)/m.test(headersBody) && !/^\/admin\.html\s*$/m.test(headersBody)
   );
 
   // 正向：该有的必须真在
   check(
     "全局声明 no-sniff",
-    /x-content-type-options:[ \t]*nosniff/i.test(headersRaw)
+    /x-content-type-options:[ \t]*nosniff/i.test(headersBody)
   );
   check(
     "全局声明 Referrer-Policy",
-    /referrer-policy:[ \t]*\S/i.test(headersRaw)
+    /referrer-policy:[ \t]*\S/i.test(headersBody)
   );
   check(
-    "防点击劫持：/admin.html 规则里有 X-Frame-Options: DENY",
-    /\/admin\.html[\s\S]{0,240}?x-frame-options:[ \t]*(DENY|SAMEORIGIN)/i.test(
-      headersRaw
+    "防点击劫持：管理页规则里有 X-Frame-Options: DENY",
+    /\/admin\*[\s\S]{0,240}?x-frame-options:[ \t]*(DENY|SAMEORIGIN)/i.test(
+      headersBody
     )
   );
   check(
-    "管理页不被搜索引擎收录：/admin.html 有 X-Robots-Tag: noindex",
-    /\/admin\.html[\s\S]{0,240}?x-robots-tag:[^\n]*noindex/i.test(headersRaw)
+    "管理页不被搜索引擎收录：管理页规则里有 X-Robots-Tag: noindex",
+    /\/admin\*[\s\S]{0,240}?x-robots-tag:[^\n]*noindex/i.test(headersBody)
   );
   check(
-    "管理页不缓存：/admin.html 有 Cache-Control: no-store",
-    /\/admin\.html[\s\S]{0,240}?cache-control:[^\n]*no-store/i.test(headersRaw)
+    "管理页不缓存：管理页规则里有 Cache-Control: no-store",
+    /\/admin\*[\s\S]{0,240}?cache-control:[^\n]*no-store/i.test(headersBody)
   );
 
-  // 规则顺序：通用 /* 在前、具体路径在后，避免覆盖顺序引发歧义
-  const firstRule = headersRaw
-    .split(/\r?\n/)
-    .find((l) => l.trim() && !l.trimStart().startsWith("#"));
+  // 规则顺序：通用 /* 在最前，后面才是具体路径
+  const firstRule = headersBody.split("\n").find((l) => l.trim() !== "");
   check("规则顺序：通用 /* 写在最前", (firstRule || "").trim() === "/*");
 }
 

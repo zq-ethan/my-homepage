@@ -1,10 +1,26 @@
+# Cloudflare Pages 安全响应头配置。文件本身不会被当成资源发布。
+#
+# 只加「纯声明式、不参与页面功能」的头 —— 这是"不搞坏东西"的关键。
+# 刻意不写 CSP / COEP：admin.html 内联了一整段 <script>，
+# 留言区还会动态加载 https://challenges.cloudflare.com/turnstile/v0/api.js
+# 并内嵌它的 iframe。这两样写窄一点就会被一起拦掉，
+# 线上表现是「留言板突然不能提交」，且 console 报错不显眼、极难归因。
+# 若真要上 CSP，必须同时放行 challenges.cloudflare.com 与 'unsafe-inline'。
+#
+# ⚠️ 路径必须写 /admin*，绝不能写 /admin.html。2026-09-21 线上实测：
+#     GET /admin.html  -> 308 Location=/admin
+#     GET /admin       -> 200
+#   Pages 会把 .html 路径规范化成无扩展名的路径，精确路径规则匹配的是
+#   规范化后的路径，所以 /admin.html 那条永远不命中（/* 与 /admin* 都命中）。
+#   用 splat 一次覆盖 /admin 与 /admin.html 两个入口。
+#   验证时只看响应头有没有 X-Frame-Options，不要只看状态码是不是 200。
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
-/admin.html
+
+/admin*
   X-Frame-Options: DENY
   X-Robots-Tag: noindex, nofollow
   Cache-Control: no-store
-/admin*
-  X-Probe-Splat: 1
