@@ -11,8 +11,10 @@ __pycache__/
 .venv/
 venv/
 
-# 本地测试报告（由 tools/*.mjs、tools/*.py 生成，属于临时产物）
-tools/_report*.txt
+# 本地测试报告与临时探测脚本（由 tools/*.mjs、tools/*.py 生成，属于临时产物）
+# 不用只写 *.txt：探测脚本本身也是临时的，只忽略 .txt 会让 .py 探测脚本
+# 以 ?? 形式挂在 git status 里（2026-09-21 实际踩到）。
+tools/_report*
 tools/_pwlog*.txt
 
 # 留言板本地数据库（线上存 Cloudflare D1，这个只是本地开发用）
